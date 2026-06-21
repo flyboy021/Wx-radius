@@ -232,16 +232,30 @@ function fmtTaf(raw){
   return raw.replace(/\s+(FM\d{6}|BECMG|TEMPO|PROB\d{2})/g, "\n$1").trim();
 }
 
-// ---- ATIS (digital ATIS, available at larger towered airports) ----------
-async function fetchAtis(icao){
-  for (const u of [`https://datis.clowd.io/api/${icao}`, `${PROXY_BASE}/atis/${icao}`]){
+// ---- ATIS (digital ATIS, available only at larger towered airports) -----
+// Fetch the full list of airports currently broadcasting D-ATIS once, so we
+// can show the ATIS button ONLY where it exists (and display from cache).
+let atisData = null, atisFetchedAt = 0;
+async function loadAtisAll(){
+  if (atisData && Date.now() - atisFetchedAt < 5*60*1000) return atisData;
+  for (const u of [`${PROXY_BASE}/atis/all`, `https://datis.clowd.io/api/all`]){
     try{
       const r = await fetch(u);
-      if (r.ok){ const j = await r.json(); if (Array.isArray(j)) return j; }
+      if (r.ok){
+        const arr = await r.json();
+        if (Array.isArray(arr)){
+          const map = {};
+          for (const a of arr){ (map[a.airport] = map[a.airport] || []).push(a); }
+          atisData = map; atisFetchedAt = Date.now();
+          return map;
+        }
+      }
     }catch(e){ /* try next source */ }
   }
-  return [];
+  if (!atisData) atisData = {};
+  return atisData;
 }
+function atisFor(icao){ return atisData ? atisData[icao] : null; }
 function atisHtml(arr){
   if (!arr || !arr.length) return null;
   return arr.map(a => {
@@ -250,14 +264,12 @@ function atisHtml(arr){
       <div class="atis-text">${a.datis||""}</div></div>`;
   }).join("");
 }
-function wireAtis(btn, slot){
+function wireAtis(btn, slot, atis){
   if (!btn || !slot) return;
-  btn.addEventListener("click", async e => {
+  btn.addEventListener("click", e => {
     e.stopPropagation();
     if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; btn.textContent="ATIS ▾"; return; }
-    btn.textContent = "Loading ATIS…";
-    const html = atisHtml(await fetchAtis(btn.dataset.icao));
-    slot.innerHTML = html || `<div class="atis none">No digital ATIS at this airport.</div>`;
+    slot.innerHTML = atisHtml(atis) || `<div class="atis none">No digital ATIS.</div>`;
     slot.dataset.open = "1"; btn.textContent = "Hide ATIS ▴";
   });
 }
@@ -363,11 +375,8 @@ function popupEl(s){
       </span></div>
     <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm</div>
     <div class="metarbox"></div>
-    ${taf
-      ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`
-      : `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><span class="taf none">No forecast issued.</span></div>`}
-    <button type="button" class="atisBtn" data-icao="${s.icaoId}">ATIS ▾</button>
-    <div class="atis-slot"></div>`;
+    ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>` : ""}
+    ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
   const metarbox = el.querySelector(".metarbox");
   const setMode = mode => {
     metarbox.innerHTML = mode === "raw"
@@ -379,7 +388,7 @@ function popupEl(s){
   el.querySelector(".seg2").addEventListener("click", e => {
     const b = e.target.closest("button"); if (b){ e.stopPropagation(); setMode(b.dataset.m); }
   });
-  wireAtis(el.querySelector(".atisBtn"), el.querySelector(".atis-slot"));
+  wireAtis(el.querySelector(".atisBtn"), el.querySelector(".atis-slot"), atisFor(s.icaoId));
   return el;
 }
 
@@ -416,10 +425,8 @@ function cardEl(s){
         </span>
       </div>
       <div class="metarbox"></div>
-      <button type="button" class="tafBtn">Forecast (TAF) ▾</button>
-      <div class="taf-slot"></div>
-      <button type="button" class="atisBtn" data-icao="${s.icaoId}">ATIS ▾</button>
-      <div class="atis-slot"></div>
+      ${taf ? `<button type="button" class="tafBtn">Forecast (TAF) ▾</button><div class="taf-slot"></div>` : ""}
+      ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}
     </div>`;
   const metarbox = card.querySelector(".metarbox");
   const setMode = mode => {
@@ -433,14 +440,12 @@ function cardEl(s){
     const b = e.target.closest("button"); if (b) setMode(b.dataset.m);
   });
   const tafBtn = card.querySelector(".tafBtn"), slot = card.querySelector(".taf-slot");
-  tafBtn.addEventListener("click", () => {
+  if (tafBtn) tafBtn.addEventListener("click", () => {
     if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; tafBtn.textContent="Forecast (TAF) ▾"; return; }
     slot.dataset.open = "1"; tafBtn.textContent = "Hide forecast ▴";
-    slot.innerHTML = taf
-      ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`
-      : `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><span class="taf none">No forecast issued.</span></div>`;
+    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`;
   });
-  wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"));
+  wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"), atisFor(s.icaoId));
   return card;
 }
 function renderList(){
@@ -488,7 +493,8 @@ async function load(c){
   $("where").textContent = `${c.name} · ${radiusNm} nm`;
   setStatus("Loading weather…");
   try{
-    lastStations = await fetchWx(c.lat, c.lon);
+    const [stations] = await Promise.all([ fetchWx(c.lat, c.lon), loadAtisAll() ]);
+    lastStations = stations;
     drawBase();
     renderStations();
     renderList();
