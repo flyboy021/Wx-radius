@@ -40,6 +40,7 @@
     height:32px;padding:0 12px;font-size:13px;font-weight:700}
   .toggle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   #map{flex:1;min-height:0;width:100%;background:#0a0e14}
+  #list{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
   .legend{display:flex;align-items:center;gap:14px;background:var(--panel);padding:6px 12px;flex-wrap:wrap}
   .legend .item{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--muted)}
   .dot{width:12px;height:12px;border-radius:50%}
@@ -60,7 +61,14 @@
     font-size:11px;font-weight:700}
   .seg2 button.on{background:var(--accent);color:#fff}
   .tafBtn{margin-top:3px;background:transparent;border:0;color:#7fb0ff;font-size:12px;
-    font-weight:700;padding:2px 0;cursor:pointer;text-align:left}
+    font-weight:700;padding:2px 0;cursor:pointer;text-align:left;display:block}
+  .atisBtn{margin-top:3px;background:transparent;border:0;color:#6fe0aa;font-size:12px;
+    font-weight:700;padding:2px 0;cursor:pointer;text-align:left;display:block}
+  .tag.atis-tag{background:#214a39;color:#9af0c8}
+  .atis{margin-top:5px}
+  .atis-text{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#c2ecd7;
+    white-space:pre-wrap;word-break:break-word;margin-top:3px;line-height:1.45}
+  .atis.none{color:#6b7a8d;font-style:italic;font-size:13px;margin-top:5px}
   .name{color:var(--muted);font-size:12px;margin:1px 0 5px}
   .decoded{display:flex;flex-wrap:wrap;gap:4px 16px;margin:2px 0 7px}
   .decoded{gap:6px 18px}
@@ -125,7 +133,7 @@
         <button data-r="50" class="on">50</button>
         <button data-r="100">100</button>
       </div>
-      <button id="filterBtn" class="toggle" title="Filter by conditions">All</button>
+      <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
       <button id="radarBtn" class="toggle" title="Toggle weather radar">☔ Radar</button>
       <button id="refreshBtn" class="toggle" title="Refresh">↻</button>
       <button id="skipBtn" class="toggle on" title="Skip the intro" style="display:none">Skip ▸</button>
@@ -142,6 +150,7 @@
   </div>
 
   <div id="status"></div>
+  <div id="list" style="display:none"></div>
 
   <footer>
     <span class="disc">Situational awareness only — not an official weather briefing.
@@ -166,7 +175,6 @@ const API = (PROXY_BASE || "") + "/api/data";
 let radiusNm = 50;
 let center = null;
 let lastStations = [];
-let currentFilter = "all";   // "all" | "ifr"
 let radarLayer = null;
 
 // ---- geo helpers --------------------------------------------------------
@@ -222,6 +230,36 @@ function summaryLine(s){
 function fmtTaf(raw){
   if (!raw) return null;
   return raw.replace(/\s+(FM\d{6}|BECMG|TEMPO|PROB\d{2})/g, "\n$1").trim();
+}
+
+// ---- ATIS (digital ATIS, available at larger towered airports) ----------
+async function fetchAtis(icao){
+  for (const u of [`https://datis.clowd.io/api/${icao}`, `${PROXY_BASE}/atis/${icao}`]){
+    try{
+      const r = await fetch(u);
+      if (r.ok){ const j = await r.json(); if (Array.isArray(j)) return j; }
+    }catch(e){ /* try next source */ }
+  }
+  return [];
+}
+function atisHtml(arr){
+  if (!arr || !arr.length) return null;
+  return arr.map(a => {
+    const lbl = a.type === "dep" ? "Departure" : a.type === "arr" ? "Arrival" : "Combined";
+    return `<div class="atis"><span class="tag atis-tag">ATIS ${a.code||""} · ${lbl}</span>
+      <div class="atis-text">${a.datis||""}</div></div>`;
+  }).join("");
+}
+function wireAtis(btn, slot){
+  if (!btn || !slot) return;
+  btn.addEventListener("click", async e => {
+    e.stopPropagation();
+    if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; btn.textContent="ATIS ▾"; return; }
+    btn.textContent = "Loading ATIS…";
+    const html = atisHtml(await fetchAtis(btn.dataset.icao));
+    slot.innerHTML = html || `<div class="atis none">No digital ATIS at this airport.</div>`;
+    slot.dataset.open = "1"; btn.textContent = "Hide ATIS ▴";
+  });
 }
 
 // ---- API ----------------------------------------------------------------
@@ -291,9 +329,7 @@ function setStatus(msg, isErr){
   el.style.display = msg ? "block" : "none";
 }
 function visibleStations(){
-  return currentFilter === "ifr"
-    ? lastStations.filter(s => s.fltCat === "IFR" || s.fltCat === "LIFR")
-    : lastStations;
+  return lastStations;   // always show every reporting station
 }
 
 function drawBase(){
@@ -318,6 +354,8 @@ function popupHtml(s){
     ${taf
       ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`
       : `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><span class="taf none">No forecast issued.</span></div>`}
+    <button type="button" class="atisBtn" data-icao="${s.icaoId}">ATIS ▾</button>
+    <div class="atis-slot"></div>
   </div>`;
 }
 
@@ -334,6 +372,73 @@ function renderStations(){
     m.bindPopup(popupHtml(s), {maxWidth:330, minWidth:250, autoPan:true});
     m.on("mouseover", () => m.openPopup());   // hover on desktop; tap on mobile
   }
+}
+
+// ---- optional list view -------------------------------------------------
+function cardEl(s){
+  const card = document.createElement("div");
+  card.className = "card";
+  card.style.borderLeftColor = catColor(s.fltCat);
+  const taf = fmtTaf(s.taf);
+  card.innerHTML = `
+    <div class="chip" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</div>
+    <div class="body">
+      <div class="hdr">
+        <span class="id">${s.icaoId}</span>
+        <span class="dist">${Math.round(s.dist)} nm away · ${(s.name||"").trim()}</span>
+        <span class="seg2">
+          <button type="button" data-m="plain" class="on">Plain</button>
+          <button type="button" data-m="raw">Raw</button>
+        </span>
+      </div>
+      <div class="metarbox"></div>
+      <button type="button" class="tafBtn">Forecast (TAF) ▾</button>
+      <div class="taf-slot"></div>
+      <button type="button" class="atisBtn" data-icao="${s.icaoId}">ATIS ▾</button>
+      <div class="atis-slot"></div>
+    </div>`;
+  const metarbox = card.querySelector(".metarbox");
+  const setMode = mode => {
+    metarbox.innerHTML = mode === "raw"
+      ? `<div class="rawline"><span class="tag metar">METAR · ${s.icaoId}</span><span class="raw">${s.rawOb||""}</span></div>`
+      : decodedGrid(s);
+    card.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
+  };
+  setMode("plain");
+  card.querySelector(".seg2").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (b) setMode(b.dataset.m);
+  });
+  const tafBtn = card.querySelector(".tafBtn"), slot = card.querySelector(".taf-slot");
+  tafBtn.addEventListener("click", () => {
+    if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; tafBtn.textContent="Forecast (TAF) ▾"; return; }
+    slot.dataset.open = "1"; tafBtn.textContent = "Hide forecast ▴";
+    slot.innerHTML = taf
+      ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`
+      : `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><span class="taf none">No forecast issued.</span></div>`;
+  });
+  wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"));
+  return card;
+}
+function renderList(){
+  const list = $("list"); list.innerHTML = "";
+  const arr = visibleStations();
+  if (!arr.length){
+    list.innerHTML = `<div class="card"><div class="body"><div class="name">${
+      lastStations.length ? "No stations match this filter." : "No reporting stations within " + radiusNm + "nm."
+    }</div></div></div>`;
+    return;
+  }
+  for (const s of arr) list.appendChild(cardEl(s));
+}
+let viewMode = "map";
+function setViewMode(mode){
+  viewMode = mode;
+  $("map").style.display = mode === "map" ? "" : "none";
+  $("list").style.display = mode === "list" ? "" : "none";
+  const b = $("listBtn");
+  b.textContent = mode === "map" ? "List" : "Map";
+  b.classList.toggle("on", mode === "list");
+  if (mode === "map") setTimeout(() => map.invalidateSize(), 60);
 }
 
 // Recolor the browser-tab favicon to match the nearest station's flight category.
@@ -362,6 +467,7 @@ async function load(c){
     lastStations = await fetchWx(c.lat, c.lon);
     drawBase();
     renderStations();
+    renderList();
     if (lastStations[0]) updateFavicon(lastStations[0].fltCat);
     document.title = lastStations[0]
       ? `${lastStations[0].icaoId} ${lastStations[0].fltCat} · Wx Radius`
@@ -399,18 +505,27 @@ function getLocation(){
     );
   });
 }
+function drawDots(metars, r){
+  introLayer.clearLayers();
+  for (const s of metars){
+    if (s.lat == null) continue;
+    L.circleMarker([s.lat, s.lon],
+      {radius:r, stroke:false, fillColor:catColor(s.fltCat), fillOpacity:.9}).addTo(introLayer);
+  }
+}
 async function showNational(){
   map.setView([39.5, -98.35], 4);
   try{
     const m = await getJson(`${API}/metar?bbox=24,-125,49,-66&format=json`);
-    if (introDone) return;
-    introLayer.clearLayers();
-    for (const s of m){
-      if (s.lat == null) continue;
-      L.circleMarker([s.lat, s.lon],
-        {radius:3, stroke:false, fillColor:catColor(s.fltCat), fillOpacity:.85}).addTo(introLayer);
-    }
+    if (!introDone) drawDots(m, 3);
   }catch(e){ /* national splash is optional */ }
+}
+async function showRegional(loc){
+  try{
+    const [s,w,n,e] = bbox(loc.lat, loc.lon, 225);   // ~225nm box = denser local coverage
+    const m = await getJson(`${API}/metar?bbox=${s},${w},${n},${e}&format=json`);
+    if (!introDone) drawDots(m, 4);
+  }catch(e){ /* optional */ }
 }
 async function startup(){
   const skip = $("skipBtn"); if (skip) skip.style.display = "";
@@ -424,6 +539,7 @@ async function startup(){
   if (introDone) return;
   setStatus("Zooming to your region…");
   map.flyTo([loc.lat, loc.lon], 7, {duration:1.6});
+  showRegional(loc);   // denser METARs for the region view
   await sleep(5000);
   if (introDone) return;
   cancelIntro();
@@ -444,7 +560,7 @@ async function toggleRadar(){
     if (!past.length) throw new Error();
     const f = past[past.length - 1];
     radarLayer = L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
-      {opacity:0.55, zIndex:400}).addTo(map);
+      {opacity:0.55, zIndex:400, tileSize:256, maxNativeZoom:8, maxZoom:18}).addTo(map);
     $("radarBtn").classList.add("on");
   }catch(e){ setStatus("Radar unavailable right now.", true); }
 }
@@ -468,12 +584,11 @@ $("radiusSeg").addEventListener("click", e => {
   [...$("radiusSeg").children].forEach(x => x.classList.toggle("on", x === b));
   if (center) load(center);
 });
-$("filterBtn").addEventListener("click", () => {
-  currentFilter = currentFilter === "all" ? "ifr" : "all";
-  const btn = $("filterBtn");
-  btn.textContent = currentFilter === "ifr" ? "IFR+" : "All";
-  btn.classList.toggle("on", currentFilter === "ifr");
-  renderStations();
+$("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
+map.on("popupopen", e => {
+  const el = e.popup.getElement(); if (!el) return;
+  const btn = el.querySelector(".atisBtn");
+  if (btn && !btn.dataset.bound){ btn.dataset.bound = "1"; wireAtis(btn, el.querySelector(".atis-slot")); }
 });
 
 // PWA service worker

@@ -19,6 +19,20 @@ export default {
       });
     }
 
+    if (url.pathname.startsWith("/atis/")) {
+      const icao = url.pathname.split("/")[2] || "";
+      try {
+        const up = await fetch("https://datis.clowd.io/api/" + encodeURIComponent(icao),
+          { headers: { Accept: "application/json" } });
+        const res = new Response(up.body, up);
+        res.headers.set("Access-Control-Allow-Origin", "*");
+        return res;
+      } catch (e) {
+        return new Response("[]", { status: 200,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      }
+    }
+
     if (!url.pathname.startsWith("/api/data/")) {
       return new Response("Wx Radius proxy OK", { status: 200 });
     }
