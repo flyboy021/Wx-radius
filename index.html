@@ -637,6 +637,10 @@ function rawLineHtml(s, pillLeft){
   return `<div class="rawline">${pillLeft ? pill + raw : raw + pill}</div>`;
 }
 // Decode the METAR remarks (everything after RMK) into plain English.
+const RMK_DIR = {N:"north", S:"south", E:"east", W:"west", NE:"northeast", NW:"northwest", SE:"southeast", SW:"southwest"};
+function rmkDir(s){ return s === "ALQDS" ? "all quadrants" : s.split("-").map(d => RMK_DIR[d] || d).join(" to the "); }
+const RMK_LTG = {CG:"cloud-to-ground", IC:"in-cloud", CC:"cloud-to-cloud", CA:"cloud-to-air"};
+function rmkLtgType(suf){ const a=[]; for (let i=0;i<suf.length;i+=2){ const p=suf.slice(i,i+2); if (RMK_LTG[p]) a.push(RMK_LTG[p]); } return a.join("/"); }
 function decodeRemarks(raw){
   if (!raw) return null;
   const idx = raw.indexOf(" RMK ");
@@ -669,6 +673,23 @@ function decodeRemarks(raw){
     else if (t === "CHINO") out.push("Ceiling sensor not operating");
     else if (t === "RVRNO") out.push("Runway visual range missing");
     else if (t === "NOSIG") out.push("No significant change expected");
+    else if (/^LTG[A-Z]*$/.test(t)){
+      const type = rmkLtgType(t.slice(3));
+      const mods = [];
+      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
+      const where = mods.map(md => md === "DSNT" ? "distant" : md === "VC" ? "in the vicinity"
+        : md === "OHD" ? "overhead" : "to the " + rmkDir(md));
+      out.push("Lightning" + (type ? ` (${type})` : "") + (where.length ? " " + where.join(" ") : ""));
+    }
+    else if ((m = t.match(/^([+-]?[A-Z]{2,4}?)((?:[BE]\d{2,4})+)$/))){
+      const wx = decodeWx(m[1]) || m[1];
+      const events = m[2].match(/[BE]\d{2,4}/g).map(ev => {
+        const tm = ev.slice(1);
+        const at = tm.length >= 4 ? `${tm.slice(0,2)}:${tm.slice(2)}` : `:${tm.padStart(2,"0")}`;
+        return `${ev[0] === "B" ? "began" : "ended"} ${at}`;
+      });
+      out.push(`${wx.charAt(0).toUpperCase()}${wx.slice(1)} ${events.join(", ")}`);
+    }
   }
   return out.length ? out : null;
 }
