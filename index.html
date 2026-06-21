@@ -24,8 +24,8 @@
   header{background:var(--panel);padding:max(env(safe-area-inset-top),12px) 14px 10px;}
   .row1{display:flex;align-items:baseline;gap:8px}
   h1{font-size:18px;margin:0;font-weight:700;flex:none}
-  #zulu{flex:1;text-align:center;font-weight:700;font-size:16px;color:#cdd6e0;
-    letter-spacing:.06em;font-variant-numeric:tabular-nums;cursor:pointer;user-select:none}
+  #zulu{flex:1;text-align:center;font-weight:700;font-size:15px;color:#cdd6e0;
+    letter-spacing:.04em;font-variant-numeric:tabular-nums}
   #zulu .lt{color:var(--muted);font-weight:600}
   #updated{flex:none}
   .sub{color:var(--muted);font-size:12px;margin-top:2px}
@@ -134,7 +134,7 @@
   <header>
     <div class="row1">
       <h1>Wx Radius</h1>
-      <span id="zulu" aria-label="Zulu time" title="Tap to compare local time"></span>
+      <span id="zulu" aria-label="Zulu and local time"></span>
       <span id="updated" class="sub"></span>
     </div>
     <div id="where" class="sub">Locating…</div>
@@ -504,7 +504,7 @@ function cardEl(s){
   const metarbox = card.querySelector(".metarbox");
   const setMode = mode => {
     metarbox.innerHTML = mode === "raw"
-      ? `<div class="rawline"><span class="raw">${highlightRaw(s.rawOb, catColor(s.fltCat))}</span><span class="taf-pill" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span></div>`
+      ? `<div class="rawline"><span class="taf-pill" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span><span class="raw">${highlightRaw(s.rawOb, catColor(s.fltCat))}</span></div>`
       : decodedGrid(s);
     card.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
   };
@@ -767,19 +767,14 @@ $("radiusSeg").addEventListener("click", e => {
 });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
 
-// live Zulu (UTC) clock in the header — tap to also show local time
-let showLocal = false;
+// live Zulu (UTC) + local clock in the header
 function tickZulu(){
   const d = new Date(), p = n => String(n).padStart(2,"0");
-  let html = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}Z`;
-  if (showLocal){
-    const local = d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", hour12:false, timeZoneName:"short"});
-    html += ` <span class="lt">· ${local}</span>`;
-  }
-  $("zulu").innerHTML = html;
+  const z = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}Z`;
+  const local = d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", hour12:false, timeZoneName:"short"});
+  $("zulu").innerHTML = `${z} <span class="lt">· ${local}</span>`;
 }
 tickZulu(); setInterval(tickZulu, 1000);
-$("zulu").addEventListener("click", () => { showLocal = !showLocal; tickZulu(); });
 
 // PWA service worker
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
