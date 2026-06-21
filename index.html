@@ -343,20 +343,37 @@ function drawBase(){
   map.setView([center.lat, center.lon], ZOOM_FOR[radiusNm] || DEFAULT_ZOOM);
 }
 
-function popupHtml(s){
+function popupEl(s){
+  const el = document.createElement("div");
+  el.className = "pop";
   const taf = fmtTaf(s.taf);
-  return `<div class="pop">
+  el.innerHTML = `
     <div class="pop-h"><span class="pop-id">${s.icaoId}</span>
-      <span class="pop-cat" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span></div>
+      <span class="pop-cat" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span>
+      <span class="seg2">
+        <button type="button" data-m="raw" class="on">Raw</button>
+        <button type="button" data-m="plain">Plain</button>
+      </span></div>
     <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm</div>
-    ${decodedGrid(s)}
-    <div class="rawline"><span class="tag metar">METAR · ${s.icaoId}</span><span class="raw">${s.rawOb||""}</span></div>
+    <div class="metarbox"></div>
     ${taf
       ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`
       : `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><span class="taf none">No forecast issued.</span></div>`}
     <button type="button" class="atisBtn" data-icao="${s.icaoId}">ATIS ▾</button>
-    <div class="atis-slot"></div>
-  </div>`;
+    <div class="atis-slot"></div>`;
+  const metarbox = el.querySelector(".metarbox");
+  const setMode = mode => {
+    metarbox.innerHTML = mode === "raw"
+      ? `<div class="rawline"><span class="tag metar">METAR · ${s.icaoId}</span><span class="raw">${s.rawOb||""}</span></div>`
+      : decodedGrid(s);
+    el.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
+  };
+  setMode("raw");   // popups default to raw METAR
+  el.querySelector(".seg2").addEventListener("click", e => {
+    const b = e.target.closest("button"); if (b){ e.stopPropagation(); setMode(b.dataset.m); }
+  });
+  wireAtis(el.querySelector(".atisBtn"), el.querySelector(".atis-slot"));
+  return el;
 }
 
 function renderStations(){
@@ -369,7 +386,7 @@ function renderStations(){
   setStatus("");
   for (const s of arr){
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
-    m.bindPopup(popupHtml(s), {maxWidth:330, minWidth:250, autoPan:true});
+    m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, autoPan:true});
     m.on("mouseover", () => m.openPopup());   // hover on desktop; tap on mobile
   }
 }
@@ -404,7 +421,7 @@ function cardEl(s){
       : decodedGrid(s);
     card.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
   };
-  setMode("plain");
+  setMode("raw");   // list view defaults to raw METAR
   card.querySelector(".seg2").addEventListener("click", e => {
     const b = e.target.closest("button"); if (b) setMode(b.dataset.m);
   });
@@ -585,11 +602,6 @@ $("radiusSeg").addEventListener("click", e => {
   if (center) load(center);
 });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
-map.on("popupopen", e => {
-  const el = e.popup.getElement(); if (!el) return;
-  const btn = el.querySelector(".atisBtn");
-  if (btn && !btn.dataset.bound){ btn.dataset.bound = "1"; wireAtis(btn, el.querySelector(".atis-slot")); }
-});
 
 // PWA service worker
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
