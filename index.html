@@ -108,6 +108,8 @@
   .disc{color:#6b7a8d;font-size:10px;flex:1}
   .tip{background:#ffb400;color:#1a1100;border:0;border-radius:8px;padding:9px 14px;
     font-weight:800;font-size:13px;white-space:nowrap}
+  .radar-time{background:rgba(13,17,23,.82);color:#cdd6e0;font-size:12px;font-weight:700;
+    padding:3px 8px;border-radius:6px;font-variant-numeric:tabular-nums}
   .leaflet-popup-content-wrapper{background:#1c2430;color:var(--txt);border-radius:12px;
     box-shadow:0 6px 24px #0009}
   .leaflet-popup-tip{background:#1c2430}
@@ -207,7 +209,6 @@ const API = (PROXY_BASE || "") + "/api/data";
 let radiusNm = 50;
 let center = null;
 let lastStations = [];
-let radarLayer = null;
 let scope = "local";   // "local" (25/50/100nm) or "region"
 
 // ---- geo helpers --------------------------------------------------------
@@ -454,7 +455,7 @@ function popupEl(s){
         <button type="button" data-m="raw" class="on">Raw</button>
         <button type="button" data-m="plain">Plain</button>
       </span></div>
-    <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm</div>
+    <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm away</div>
     <div class="metarbox"></div>
     ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
@@ -740,18 +741,48 @@ function skipIntro(){
 }
 
 // ---- radar overlay (RainViewer) ----------------------------------------
+let radarLayers = [], radarFrames = [], radarIdx = 0, radarTimer = null, radarCtl = null;
+const RADAR_ERR_TILE = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+function radarFrameLabel(f){
+  const d = new Date(f.time * 1000), p = n => String(n).padStart(2,"0");
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}Z radar${f.nowcast ? " · forecast" : ""}`;
+}
+function showRadarFrame(i){
+  radarLayers[i].setOpacity(0.6);
+  const box = document.getElementById("radarTimeBox");
+  if (box) box.textContent = radarFrameLabel(radarFrames[i]);
+}
+function stopRadar(){
+  if (radarTimer){ clearInterval(radarTimer); radarTimer = null; }
+  radarLayers.forEach(l => map.removeLayer(l));
+  radarLayers = []; radarFrames = [];
+  if (radarCtl){ map.removeControl(radarCtl); radarCtl = null; }
+  $("radarBtn").classList.remove("on");
+}
 async function toggleRadar(){
-  if (radarLayer){ map.removeLayer(radarLayer); radarLayer = null; $("radarBtn").classList.remove("on"); return; }
+  if (radarLayers.length){ stopRadar(); return; }
   try{
     const j = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json();
-    const past = (j.radar && j.radar.past) || [];
-    if (!past.length) throw new Error();
-    const f = past[past.length - 1];
-    radarLayer = L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
-      {opacity:0.55, zIndex:400, tileSize:256, maxNativeZoom:6, maxZoom:18,
-       errorTileUrl:"data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="}).addTo(map);
+    const host = j.host;
+    const past = ((j.radar && j.radar.past) || []).map(f => ({...f, nowcast:false}));
+    const now = ((j.radar && j.radar.nowcast) || []).map(f => ({...f, nowcast:true}));
+    radarFrames = [...past, ...now];
+    if (!radarFrames.length) throw new Error();
+    radarLayers = radarFrames.map(f => L.tileLayer(`${host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
+      {opacity:0, zIndex:400, tileSize:256, maxNativeZoom:6, maxZoom:18, errorTileUrl:RADAR_ERR_TILE}).addTo(map));
+    radarCtl = L.control({position:"bottomleft"});
+    radarCtl.onAdd = () => { const d = L.DomUtil.create("div", "radar-time"); d.id = "radarTimeBox"; return d; };
+    radarCtl.addTo(map);
+    radarIdx = 0;
+    showRadarFrame(0);
+    radarTimer = setInterval(() => {
+      radarLayers[radarIdx].setOpacity(0);
+      radarIdx = (radarIdx + 1) % radarLayers.length;
+      showRadarFrame(radarIdx);
+    }, 500);
     $("radarBtn").classList.add("on");
-  }catch(e){ setStatus("Radar unavailable right now.", true); }
+  }catch(e){ setStatus("Radar unavailable right now.", true); stopRadar(); }
 }
 
 // ---- events -------------------------------------------------------------
