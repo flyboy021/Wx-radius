@@ -81,6 +81,10 @@
   .decoded .d{font-size:16px;color:var(--txt)}
   .decoded .d b{color:var(--muted);font-weight:600;margin-right:6px;font-size:11px;
     text-transform:uppercase;letter-spacing:.04em}
+  .rmk{margin-top:7px;border-top:1px solid var(--line);padding-top:6px}
+  .rmk-h{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+    font-weight:700;margin-bottom:3px}
+  .rmk-item{font-size:13px;color:var(--txt);line-height:1.45}
   .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;
     padding:1px 6px;border-radius:4px;margin-right:6px;vertical-align:middle}
   .tag.metar{background:#23406b;color:#bcd6ff}
@@ -203,7 +207,7 @@
 <script>
 // ---- CONFIG -------------------------------------------------------------
 // Put your tip-jar link here (Stripe Payment Link / Ko-fi / Buy Me a Coffee).
-const TIP_URL = "https://buymeacoffee.com/yourname"; // <-- change me
+const TIP_URL = "https://buymeacoffee.com/flyboy021";
 const DEFAULT_ZOOM = 10;
 const ZOOM_FOR = {25:11, 50:10, 100:9};
 
@@ -542,8 +546,49 @@ function rawLineHtml(s, pillLeft){
   const raw = `<span class="raw">${highlightRaw(s.rawOb, col)}</span>`;
   return `<div class="rawline">${pillLeft ? pill + raw : raw + pill}</div>`;
 }
+// Decode the METAR remarks (everything after RMK) into plain English.
+function decodeRemarks(raw){
+  if (!raw) return null;
+  const idx = raw.indexOf(" RMK ");
+  if (idx < 0) return null;
+  const toks = raw.slice(idx + 5).replace(/\s*\$\s*$/, "").trim().split(/\s+/);
+  const tend = ["rising then falling","rising then steady","rising","rising then steady or falling",
+    "steady","falling then rising","falling then steady","falling","steady then falling"];
+  const out = [];
+  for (let i = 0; i < toks.length; i++){
+    const t = toks[i]; let m;
+    if (t === "AO1") out.push("Automated station (no precipitation sensor)");
+    else if (t === "AO2") out.push("Automated station with precipitation sensor");
+    else if ((m = t.match(/^SLP(\d{3})$/))){ const v = +m[1]; out.push(`Sea-level pressure ${(v >= 500 ? 900 + v/10 : 1000 + v/10).toFixed(1)} hPa`); }
+    else if ((m = t.match(/^T([01])(\d{3})([01])(\d{3})$/))){ const tp=(m[1]==="1"?-1:1)*m[2]/10, dp=(m[3]==="1"?-1:1)*m[4]/10; out.push(`Exact temp ${tp.toFixed(1)}°C / dewpoint ${dp.toFixed(1)}°C`); }
+    else if ((m = t.match(/^1([01])(\d{3})$/))){ out.push(`6-hour high temp ${((m[1]==="1"?-1:1)*m[2]/10).toFixed(1)}°C`); }
+    else if ((m = t.match(/^2([01])(\d{3})$/))){ out.push(`6-hour low temp ${((m[1]==="1"?-1:1)*m[2]/10).toFixed(1)}°C`); }
+    else if ((m = t.match(/^5([0-8])(\d{3})$/))){ out.push(`3-hour pressure ${tend[+m[1]]} (${(+m[2]/10).toFixed(1)} hPa)`); }
+    else if ((m = t.match(/^P(\d{4})$/))){ out.push(`Precipitation last hour ${(+m[1]/100).toFixed(2)} in`); }
+    else if ((m = t.match(/^6(\d{4})$/))){ out.push(`Precipitation 3–6 hr ${(+m[1]/100).toFixed(2)} in`); }
+    else if ((m = t.match(/^7(\d{4})$/))){ out.push(`Precipitation 24 hr ${(+m[1]/100).toFixed(2)} in`); }
+    else if (t === "PK" && toks[i+1] === "WND"){ const wm = (toks[i+2]||"").match(/^(\d{3})(\d{2,3})\/(\d{2})?(\d{2})$/); if (wm){ const tm = wm[3] ? `${wm[3]}:${wm[4]}` : `:${wm[4]}`; out.push(`Peak wind ${wm[1]}° at ${+wm[2]} kt at ${tm}Z`); i += 2; } }
+    else if (t === "WSHFT"){ const w = toks[i+1]||""; out.push(`Wind shift at ${w.length===4 ? w.slice(0,2)+":"+w.slice(2) : w}Z`); i++; }
+    else if (t === "PRESRR") out.push("Pressure rising rapidly");
+    else if (t === "PRESFR") out.push("Pressure falling rapidly");
+    else if (t === "PNO") out.push("Precipitation sensor not operating");
+    else if (t === "FZRANO") out.push("Freezing-rain sensor not operating");
+    else if (t === "TSNO") out.push("Thunderstorm sensor not operating");
+    else if (t === "PWINO") out.push("Present-weather sensor not operating");
+    else if (t === "VISNO") out.push("Visibility sensor not operating");
+    else if (t === "CHINO") out.push("Ceiling sensor not operating");
+    else if (t === "RVRNO") out.push("Runway visual range missing");
+    else if (t === "NOSIG") out.push("No significant change expected");
+  }
+  return out.length ? out : null;
+}
 function metarBoxHtml(s, pillLeft){
-  return metarMode === "raw" ? rawLineHtml(s, pillLeft) : decodedGrid(s);
+  if (metarMode === "raw") return rawLineHtml(s, pillLeft);
+  const rmk = decodeRemarks(s.rawOb);
+  const rmkHtml = rmk
+    ? `<div class="rmk"><div class="rmk-h">Remarks</div>${rmk.map(r => `<div class="rmk-item">${r}</div>`).join("")}</div>`
+    : "";
+  return decodedGrid(s) + rmkHtml;
 }
 function popupEl(s){
   const el = document.createElement("div");
