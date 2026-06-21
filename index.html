@@ -492,6 +492,17 @@ async function geocode(idRaw){
 // ---- map ----------------------------------------------------------------
 const map = L.map("map", {zoomControl:true, attributionControl:false}).setView([39.5,-98.35], 4);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {maxZoom:18}).addTo(map);
+// Country + US state borders overlay (thin lines, non-interactive, below markers)
+fetch("https://cdn.jsdelivr.net/gh/johan/world.geo.json/countries.geo.json")
+  .then(r => r.ok ? r.json() : null)
+  .then(gj => { if (gj) L.geoJSON(gj, { interactive:false,
+    style:{ color:"#5d7088", weight:1, opacity:0.5, fill:false } }).addTo(map); })
+  .catch(() => {});
+fetch("https://cdn.jsdelivr.net/gh/PublicaMundi/MappingAPI/data/geojson/us-states.json")
+  .then(r => r.ok ? r.json() : null)
+  .then(gj => { if (gj) L.geoJSON(gj, { interactive:false,
+    style:{ color:"#5d7088", weight:1, opacity:0.55, fill:false } }).addTo(map); })
+  .catch(() => {});
 let layer = L.layerGroup().addTo(map);
 let introLayer = L.layerGroup().addTo(map);
 let circle = null, youMarker = null;
