@@ -85,6 +85,10 @@
   .taf-wrap{margin-top:7px}
   .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#9fd6ff;
     white-space:pre-wrap;word-break:break-word;margin-top:2px;line-height:1.45}
+  .taf-line{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;
+    color:#9fd6ff;white-space:pre-wrap;word-break:break-word;padding:2px 0 2px 8px;
+    border-left:3px solid transparent;margin-top:2px}
+  .taf-cat{font-weight:800;margin-right:6px}
   .taf.none{color:#6b7a8d;font-style:italic}
   .hint{color:#5f6e80;font-size:11px;margin-top:6px}
   footer{background:var(--panel);padding:8px 12px max(env(safe-area-inset-bottom),8px);
@@ -408,7 +412,7 @@ function popupEl(s){
       </span></div>
     <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm</div>
     <div class="metarbox"></div>
-    ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>` : ""}
+    ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
   const metarbox = el.querySelector(".metarbox");
   const setMode = mode => {
@@ -476,7 +480,7 @@ function cardEl(s){
   if (tafBtn) tafBtn.addEventListener("click", () => {
     if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; tafBtn.textContent="Forecast (TAF) ▾"; return; }
     slot.dataset.open = "1"; tafBtn.textContent = "Hide forecast ▴";
-    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`;
+    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf)}</div></div>`;
   });
   wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"), atisFor(s.icaoId));
   return card;
