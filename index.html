@@ -31,6 +31,7 @@
   .search button{background:var(--accent);color:#fff;border:0;border-radius:8px;height:40px;
     padding:0 14px;font-weight:700;font-size:15px}
   .search button.ghost{background:var(--panel2);border:1px solid var(--line)}
+  #gps{padding:0;width:44px;display:flex;align-items:center;justify-content:center;color:#cdd6e0}
   /* controls */
   .controls{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
   .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
@@ -99,7 +100,7 @@
   .leaflet-popup-content-wrapper{background:#1c2430;color:var(--txt);border-radius:12px;
     box-shadow:0 6px 24px #0009}
   .leaflet-popup-tip{background:#1c2430}
-  .leaflet-popup-content{margin:12px 14px;font-size:15px;max-height:52vh;overflow:auto}
+  .leaflet-popup-content{margin:12px 14px;font-size:15px}
   .leaflet-popup-close-button{color:#8fa0b3 !important;font-size:22px !important;
     width:28px !important;height:28px !important}
   .pop-h{display:flex;align-items:center;gap:10px;margin-bottom:2px}
@@ -129,7 +130,15 @@
       <input id="q" placeholder="Airport id (e.g. JFK or KJFK)" autocapitalize="characters"
              autocorrect="off" spellcheck="false" inputmode="text" />
       <button id="go">Go</button>
-      <button id="gps" class="ghost" title="Use my location">◎</button>
+      <button id="gps" class="ghost" title="Find my location" aria-label="Find my location">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+          <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+        </svg>
+      </button>
     </div>
     <div class="controls">
       <div class="seg" id="radiusSeg">
@@ -139,7 +148,6 @@
       </div>
       <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
       <button id="radarBtn" class="toggle" title="Toggle weather radar">☔ Radar</button>
-      <button id="refreshBtn" class="toggle" title="Refresh">↻</button>
       <button id="skipBtn" class="toggle on" title="Skip the intro" style="display:none">Skip ▸</button>
     </div>
   </header>
@@ -392,7 +400,8 @@ function drawBase(){
   const near = lastStations[0];
   if (near && near.dist <= 5){
     // a reporting station sits under the "you" marker — let it open that station's details
-    youMarker.bindPopup(popupEl(near), {maxWidth:330, minWidth:250, autoPan:true});
+    youMarker.bindPopup(popupEl(near), {maxWidth:330, minWidth:250,
+      maxHeight:Math.max(180, Math.round(map.getSize().y * 0.72)), autoPan:true, keepInView:true});
   } else {
     youMarker.bindPopup(center.name === "My location" ? "You are here" : center.name);
   }
@@ -437,9 +446,10 @@ function renderStations(){
     return;
   }
   setStatus("");
+  const maxH = Math.max(180, Math.round(map.getSize().y * 0.72));
   for (const s of arr){
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
-    m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, autoPan:true});
+    m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true});
     m.on("mouseover", () => m.openPopup());   // hover on desktop; tap on mobile
   }
 }
@@ -659,7 +669,6 @@ $("skipBtn").addEventListener("click", skipIntro);
 $("q").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
 $("gps").addEventListener("click", useMyLocation);
 $("tip").addEventListener("click", () => window.open(TIP_URL, "_blank", "noopener"));
-$("refreshBtn").addEventListener("click", () => center && load(center));
 $("radarBtn").addEventListener("click", toggleRadar);
 
 $("radiusSeg").addEventListener("click", e => {
