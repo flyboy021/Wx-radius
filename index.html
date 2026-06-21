@@ -113,6 +113,8 @@
   .pop-id{font-size:22px;font-weight:800;letter-spacing:.02em}
   .pop-cat{color:#fff;font-size:12px;font-weight:800;padding:2px 8px;border-radius:5px}
   .pop-name{color:var(--muted);font-size:13px;margin-bottom:7px}
+  .pop-body{display:flex;gap:10px;margin-top:2px}
+  .pop-body .metarbox{flex:1;min-width:0}
   /* map station marker + id label */
   .stn{display:flex;align-items:center;gap:3px;white-space:nowrap}
   .stn .pin{width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0006;flex:none}
@@ -436,13 +438,15 @@ function popupEl(s){
   const taf = fmtTaf(s.taf);
   el.innerHTML = `
     <div class="pop-h"><span class="pop-id">${s.icaoId}</span>
-      <span class="pop-cat" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span>
       <span class="seg2">
         <button type="button" data-m="raw" class="on">Raw</button>
         <button type="button" data-m="plain">Plain</button>
       </span></div>
     <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm</div>
-    <div class="metarbox"></div>
+    <div class="pop-body">
+      <span class="chip" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span>
+      <div class="metarbox"></div>
+    </div>
     ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
   const metarbox = el.querySelector(".metarbox");
