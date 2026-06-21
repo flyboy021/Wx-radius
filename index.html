@@ -101,6 +101,7 @@
   .raw{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;
     color:#cdd6e0;white-space:pre-wrap;word-break:break-word;line-height:1.45}
   .raw-id{font-weight:800}
+  .raw-time{color:#ff9f1c;font-weight:800}
   .metar-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
   .metar-head .raw-id{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
   .cat-txt{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;font-weight:800}
@@ -294,10 +295,21 @@ function summaryLine(s){
   return `${fmtWind(s)} · ${fmtVis(s)} · ${fmtClouds(s)}`;
 }
 // Show the raw observation and highlight its leading "METAR KXXX" / "SPECI KXXX".
-function highlightRaw(raw, col){
+function ord(n){ const v = n % 100; if (v >= 11 && v <= 13) return n + "th";
+  return n + ({1:"st", 2:"nd", 3:"rd"}[n % 10] || "th"); }
+function localStamp(epoch){
+  const d = new Date(epoch * 1000), p = n => String(n).padStart(2,"0");
+  const tz = (d.toLocaleTimeString([], {hour12:false, timeZoneName:"short"}).split(" ").pop()) || "";
+  return `${ord(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}${tz}`;
+}
+function highlightRaw(raw, col, obsTime){
   if (!raw) return "";
-  const style = col ? ` style="color:${col}"` : "";
-  return raw.replace(/^(METAR|SPECI)\s+(\S+)/, `<span class="raw-id"${style}>$1 $2</span>`);
+  let html = raw.replace(/^(METAR|SPECI)\s+(\S+)/,
+    col ? `<span class="raw-id" style="color:${col}">$1 $2</span>` : `<span class="raw-id">$1 $2</span>`);
+  // Convert the obs timestamp (e.g. 212058Z) to local when in local time mode.
+  html = html.replace(/\b\d{6}Z\b/, (m) =>
+    (timeMode === "local" && obsTime) ? `<span class="raw-time">${localStamp(obsTime)}</span>` : m);
+  return html;
 }
 // Break a raw TAF into readable forecast lines.
 function fmtTaf(raw){
@@ -573,7 +585,7 @@ function drawBase(){
 function rawLineHtml(s, pillLeft){
   const col = catColor(s.fltCat);
   const pill = `<span class="taf-pill" style="background:${col}">${s.fltCat||"?"}</span>`;
-  const raw = `<span class="raw">${highlightRaw(s.rawOb, col)}</span>`;
+  const raw = `<span class="raw">${highlightRaw(s.rawOb, col, s.obsTime)}</span>`;
   return `<div class="rawline">${pillLeft ? pill + raw : raw + pill}</div>`;
 }
 // Decode the METAR remarks (everything after RMK) into plain English.
