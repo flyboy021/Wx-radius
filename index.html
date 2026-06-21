@@ -7,6 +7,7 @@
 <title>Wx Radius — METAR/TAF nearby</title>
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="icon" id="favicon" href="icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -38,10 +39,10 @@
   .toggle{background:var(--panel2);color:var(--muted);border:1px solid var(--line);border-radius:8px;
     height:32px;padding:0 12px;font-size:13px;font-weight:700}
   .toggle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-  #map{height:40vh;width:100%;background:#0a0e14}
+  #map{flex:1;min-height:0;width:100%;background:#0a0e14}
   .legend{display:flex;align-items:center;gap:14px;background:var(--panel);padding:6px 12px;flex-wrap:wrap}
-  .legend .item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
-  .dot{width:11px;height:11px;border-radius:50%}
+  .legend .item{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--muted)}
+  .dot{width:12px;height:12px;border-radius:50%}
   #status{padding:8px 12px;font-size:13px}
   #status.err{background:#2a1416;color:#ff9094}
   #list{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
@@ -50,24 +51,32 @@
   .chip{min-width:46px;height:22px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;
     display:flex;align-items:center;justify-content:center;margin-top:2px}
   .body{flex:1;min-width:0}
-  .hdr{display:flex;align-items:baseline;gap:6px}
-  .id{font-size:16px;font-weight:800;letter-spacing:.02em}
-  .dist{color:var(--muted);font-weight:500;font-size:12px}
+  .hdr{display:flex;align-items:center;gap:8px}
+  .id{font-size:16px;font-weight:800;letter-spacing:.02em;flex:none}
+  .dist{color:var(--muted);font-weight:500;font-size:12px;flex:1;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .seg2{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:none}
+  .seg2 button{background:var(--panel2);color:var(--muted);border:0;height:24px;padding:0 9px;
+    font-size:11px;font-weight:700}
+  .seg2 button.on{background:var(--accent);color:#fff}
+  .tafBtn{margin-top:3px;background:transparent;border:0;color:#7fb0ff;font-size:12px;
+    font-weight:700;padding:2px 0;cursor:pointer;text-align:left}
   .name{color:var(--muted);font-size:12px;margin:1px 0 5px}
   .decoded{display:flex;flex-wrap:wrap;gap:4px 16px;margin:2px 0 7px}
-  .decoded .d{font-size:13px;color:var(--txt)}
-  .decoded .d b{color:var(--muted);font-weight:600;margin-right:5px;font-size:10px;
+  .decoded{gap:6px 18px}
+  .decoded .d{font-size:16px;color:var(--txt)}
+  .decoded .d b{color:var(--muted);font-weight:600;margin-right:6px;font-size:11px;
     text-transform:uppercase;letter-spacing:.04em}
   .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;
     padding:1px 6px;border-radius:4px;margin-right:6px;vertical-align:middle}
   .tag.metar{background:#23406b;color:#bcd6ff}
   .tag.taf{background:#3a2d5e;color:#d9c6ff}
-  .raw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#cdd6e0;
-    white-space:pre-wrap;word-break:break-word}
+  .raw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#cdd6e0;
+    white-space:pre-wrap;word-break:break-word;line-height:1.45}
   .rawline{margin-top:2px}
   .taf-wrap{margin-top:7px}
-  .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#9fd6ff;
-    white-space:pre-wrap;word-break:break-word;margin-top:2px}
+  .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#9fd6ff;
+    white-space:pre-wrap;word-break:break-word;margin-top:2px;line-height:1.45}
   .taf.none{color:#6b7a8d;font-style:italic}
   .hint{color:#5f6e80;font-size:11px;margin-top:6px}
   footer{background:var(--panel);padding:8px 12px max(env(safe-area-inset-bottom),8px);
@@ -75,11 +84,20 @@
   .disc{color:#6b7a8d;font-size:10px;flex:1}
   .tip{background:#ffb400;color:#1a1100;border:0;border-radius:8px;padding:9px 14px;
     font-weight:800;font-size:13px;white-space:nowrap}
-  .leaflet-popup-content{margin:8px 10px;font-size:12px}
+  .leaflet-popup-content-wrapper{background:#1c2430;color:var(--txt);border-radius:12px;
+    box-shadow:0 6px 24px #0009}
+  .leaflet-popup-tip{background:#1c2430}
+  .leaflet-popup-content{margin:12px 14px;font-size:15px;max-height:52vh;overflow:auto}
+  .leaflet-popup-close-button{color:#8fa0b3 !important;font-size:22px !important;
+    width:28px !important;height:28px !important}
+  .pop-h{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+  .pop-id{font-size:22px;font-weight:800;letter-spacing:.02em}
+  .pop-cat{color:#fff;font-size:12px;font-weight:800;padding:2px 8px;border-radius:5px}
+  .pop-name{color:var(--muted);font-size:13px;margin-bottom:7px}
   /* map station marker + id label */
   .stn{display:flex;align-items:center;gap:3px;white-space:nowrap}
   .stn .pin{width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0006;flex:none}
-  .stn .lbl{font-size:10px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 1px 2px #000}
+  .stn .lbl{font-size:12px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 1px 2px #000}
   .you{width:16px;height:16px;border-radius:50%;background:#1e90ff;border:3px solid #fff;
     box-shadow:0 0 0 2px #1e90ff88, 0 0 12px #1e90ffcc}
   .you::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:16px;
@@ -124,7 +142,6 @@
   </div>
 
   <div id="status"></div>
-  <div id="list"></div>
 
   <footer>
     <span class="disc">Situational awareness only — not an official weather briefing.
@@ -290,47 +307,50 @@ function drawBase(){
   map.setView([center.lat, center.lon], ZOOM_FOR[radiusNm] || DEFAULT_ZOOM);
 }
 
+function popupHtml(s){
+  const taf = fmtTaf(s.taf);
+  return `<div class="pop">
+    <div class="pop-h"><span class="pop-id">${s.icaoId}</span>
+      <span class="pop-cat" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span></div>
+    <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm</div>
+    ${decodedGrid(s)}
+    <div class="rawline"><span class="tag metar">METAR · ${s.icaoId}</span><span class="raw">${s.rawOb||""}</span></div>
+    ${taf
+      ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`
+      : `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><span class="taf none">No forecast issued.</span></div>`}
+  </div>`;
+}
+
 function renderStations(){
   layer.clearLayers();
-  const list = $("list"); list.innerHTML = "";
   const arr = visibleStations();
   if (!arr.length){
-    list.innerHTML = `<div class="card"><div class="body name">${
-      lastStations.length ? "No stations match this filter." : "No reporting stations within " + radiusNm + "nm."
-    }</div></div>`;
+    setStatus(lastStations.length ? "No stations match this filter." : `No reporting stations within ${radiusNm}nm.`);
     return;
   }
+  setStatus("");
   for (const s of arr){
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
-    m.bindPopup(`<b>${s.icaoId} · ${s.fltCat||"?"}</b><br>${summaryLine(s)}<br><span style="color:#666">${s.rawOb||""}</span>`);
-
-    const card = document.createElement("div");
-    card.className = "card";
-    card.style.borderLeftColor = catColor(s.fltCat);
-    card.innerHTML = `
-      <div class="chip" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</div>
-      <div class="body">
-        <div class="hdr"><span class="id">${s.icaoId}</span><span class="dist">${Math.round(s.dist)} nm · ${(s.name||"").trim()}</span></div>
-        ${decodedGrid(s)}
-        <div class="rawline"><span class="tag metar">METAR · ${s.icaoId}</span><span class="raw">${s.rawOb||""}</span></div>
-        <div class="taf-slot"></div>
-        <div class="hint">Tap for the forecast (TAF)</div>
-      </div>`;
-    const taf = fmtTaf(s.taf);
-    card.addEventListener("click", () => {
-      map.setView([s.lat, s.lon], 10);
-      m.openPopup();
-      const slot = card.querySelector(".taf-slot");
-      const hint = card.querySelector(".hint");
-      if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; if(hint) hint.style.display=""; return; }
-      slot.dataset.open = "1";
-      if (hint) hint.style.display = "none";
-      slot.innerHTML = taf
-        ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`
-        : `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><span class="taf none">No forecast issued for this station.</span></div>`;
-    });
-    list.appendChild(card);
+    m.bindPopup(popupHtml(s), {maxWidth:330, minWidth:250, autoPan:true});
+    m.on("mouseover", () => m.openPopup());   // hover on desktop; tap on mobile
   }
+}
+
+// Recolor the browser-tab favicon to match the nearest station's flight category.
+function updateFavicon(cat){
+  const sz = 64, cv = document.createElement("canvas"); cv.width = cv.height = sz;
+  const x = cv.getContext("2d"); if (!x) return;
+  const r = 14;
+  x.fillStyle = "#0d1117";
+  x.beginPath();
+  x.moveTo(r,0); x.arcTo(sz,0,sz,sz,r); x.arcTo(sz,sz,0,sz,r);
+  x.arcTo(0,sz,0,0,r); x.arcTo(0,0,sz,0,r); x.closePath(); x.fill();
+  x.strokeStyle = "#2b6fff"; x.globalAlpha = .5; x.lineWidth = 4;
+  x.beginPath(); x.arc(sz/2, sz/2, 20, 0, 2*Math.PI); x.stroke(); x.globalAlpha = 1;
+  x.fillStyle = catColor(cat);
+  x.beginPath(); x.arc(sz/2, sz/2, 11, 0, 2*Math.PI); x.fill();
+  const link = document.getElementById("favicon");
+  if (link) link.href = cv.toDataURL("image/png");
 }
 
 async function load(c){
@@ -342,8 +362,11 @@ async function load(c){
     lastStations = await fetchWx(c.lat, c.lon);
     drawBase();
     renderStations();
+    if (lastStations[0]) updateFavicon(lastStations[0].fltCat);
+    document.title = lastStations[0]
+      ? `${lastStations[0].icaoId} ${lastStations[0].fltCat} · Wx Radius`
+      : "Wx Radius";
     $("updated").textContent = "as of " + zulu(new Date());
-    setStatus(lastStations.length ? "" : `No stations within ${radiusNm}nm.`);
   }catch(e){
     setStatus(e.message || "Could not load weather", true);
   }
