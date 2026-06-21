@@ -319,6 +319,89 @@ function tafHtml(raw, pillLeft){
   }).join("");
 }
 
+// ---- TAF plain-English decoding (from structured forecast periods) ------
+function tafTime(epoch){
+  const d = new Date(epoch * 1000), p = n => String(n).padStart(2,"0");
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}Z`;
+}
+function fcstPrefix(f, first){
+  const from = tafTime(f.timeFrom);
+  if (first) return `From ${from}`;
+  if (f.fcstChange === "BECMG") return `Becoming ${from}–${tafTime(f.timeTo)}`;
+  if (f.fcstChange === "TEMPO") return `Temporary ${from}–${tafTime(f.timeTo)}`;
+  if (f.probability) return `${f.probability}% chance ${from}–${tafTime(f.timeTo)}`;
+  return `From ${from}`;
+}
+function fcstWind(f){
+  if (f.wspd == null && f.wdir == null) return null;
+  if (f.wspd === 0) return "wind calm";
+  const dir = (f.wdir === "VRB" || f.wdir === 0) ? "variable" : `${String(f.wdir).padStart(3,"0")}°`;
+  let s = `wind ${dir} at ${f.wspd} kt`;
+  if (f.wgst) s += ` gusting ${f.wgst} kt`;
+  return s;
+}
+function fcstVis(f){ return f.visib != null ? `vis ${f.visib} sm` : null; }
+const WX_MAP = {MI:"shallow", PR:"partial", BC:"patches", DR:"drifting", BL:"blowing",
+  SH:"showers", TS:"thunderstorm", FZ:"freezing", DZ:"drizzle", RA:"rain", SN:"snow",
+  SG:"snow grains", IC:"ice crystals", PL:"ice pellets", GR:"hail", GS:"small hail",
+  UP:"precip", BR:"mist", FG:"fog", FU:"smoke", VA:"volcanic ash", DU:"dust",
+  SA:"sand", HZ:"haze", PY:"spray", PO:"dust whirls", SQ:"squalls", FC:"funnel cloud",
+  SS:"sandstorm", DS:"duststorm"};
+function decodeWx(wx){
+  if (!wx) return null;
+  return wx.split(/\s+/).map(tok => {
+    let out = "", t = tok;
+    if (t[0] === "-"){ out += "light "; t = t.slice(1); }
+    else if (t[0] === "+"){ out += "heavy "; t = t.slice(1); }
+    if (t.startsWith("VC")){ out += "nearby "; t = t.slice(2); }
+    const words = [];
+    for (let i = 0; i < t.length; i += 2){ const p = t.slice(i, i+2); if (WX_MAP[p]) words.push(WX_MAP[p]); }
+    return (out + words.join(" ")).trim();
+  }).filter(Boolean).join(", ");
+}
+const TAF_COVER = {FEW:"few", SCT:"scattered", BKN:"broken", OVC:"overcast",
+  SKC:"sky clear", CLR:"sky clear", NSC:"no significant cloud", CAVOK:"sky clear"};
+function fcstClouds(f){
+  if (f.vertVis != null) return `vertical visibility ${(f.vertVis*100).toLocaleString()} ft`;
+  if (!f.clouds || !f.clouds.length) return null;
+  return f.clouds.map(c => {
+    if (["SKC","CLR","CAVOK","NSC"].includes(c.cover)) return "sky clear";
+    return c.base != null ? `${TAF_COVER[c.cover]||c.cover} ${Number(c.base).toLocaleString()} ft` : (TAF_COVER[c.cover]||c.cover);
+  }).join(", ");
+}
+function fcstCat(f){
+  let ceil = null;
+  if (f.vertVis != null) ceil = f.vertVis * 100;
+  else if (f.clouds) for (const c of f.clouds)
+    if ((c.cover === "BKN" || c.cover === "OVC") && c.base != null) ceil = ceil == null ? c.base : Math.min(ceil, c.base);
+  let vis = null;
+  if (f.visib != null){ const v = String(f.visib); vis = v.includes("+") ? 6.01 : parseFloat(v); if (isNaN(vis)) vis = null; }
+  return catFromVisCeil(vis, ceil);
+}
+function tafDecodedHtml(t, pillLeft){
+  if (!t || !t.fcsts || !t.fcsts.length) return tafHtml(t && t.rawTAF, pillLeft);
+  return t.fcsts.map((f, i) => {
+    const bits = [fcstWind(f), fcstVis(f), decodeWx(f.wxString), fcstClouds(f)].filter(Boolean);
+    const txt = `${fcstPrefix(f, i === 0)}: ${bits.join(", ")}`;
+    const cat = fcstCat(f);
+    if (cat){
+      const col = catColor(cat);
+      const pill = `<span class="taf-pill" style="background:${col}">${cat}</span>`;
+      const t2 = `<span class="taf-txt">${txt}</span>`;
+      return pillLeft
+        ? `<div class="taf-line pill-left" style="border-left-color:${col}">${pill}${t2}</div>`
+        : `<div class="taf-line" style="border-left-color:${col}">${t2}${pill}</div>`;
+    }
+    return pillLeft
+      ? `<div class="taf-line pill-left"><span class="taf-pill ghost"></span><span class="taf-txt">${txt}</span></div>`
+      : `<div class="taf-line"><span class="taf-txt">${txt}</span></div>`;
+  }).join("");
+}
+function tafBlock(t, pillLeft){
+  if (!t) return "";
+  return metarMode === "raw" ? tafHtml(t.rawTAF, pillLeft) : tafDecodedHtml(t, pillLeft);
+}
+
 // ---- ATIS (digital ATIS, available only at larger towered airports) -----
 // Fetch the full list of airports currently broadcasting D-ATIS once, so we
 // can show the ATIS button ONLY where it exists (and display from cache).
@@ -376,7 +459,7 @@ async function fetchWx(lat, lon){
     getJson(`${API}/taf?bbox=${box}&format=json`)
   ]);
   const tafById = {};
-  for (const t of tafs) tafById[t.icaoId] = t.rawTAF || "";
+  for (const t of tafs) tafById[t.icaoId] = t;
   return metars
     .map(m => ({...m, dist: distanceNm(lat, lon, m.lat, m.lon), taf: tafById[m.icaoId] || null}))
     .filter(m => m.dist <= radiusNm)
@@ -465,12 +548,12 @@ function metarBoxHtml(s, pillLeft){
 function popupEl(s){
   const el = document.createElement("div");
   el.className = "pop";
-  const taf = fmtTaf(s.taf);
+  const taf = s.taf;
   el.innerHTML = `
     <div class="pop-h"><span class="pop-id">${s.icaoId}</span></div>
     <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm away</div>
     <div class="metarbox">${metarBoxHtml(s, false)}</div>
-    ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf)}</div></div>` : ""}
+    ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafBlock(s.taf, false)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
   wireAtis(el.querySelector(".atisBtn"), el.querySelector(".atis-slot"), atisFor(s.icaoId));
   return el;
@@ -497,7 +580,7 @@ function cardEl(s){
   const card = document.createElement("div");
   card.className = "card";
   card.style.borderLeftColor = catColor(s.fltCat);
-  const taf = fmtTaf(s.taf);
+  const taf = s.taf;
   card.innerHTML = `
     <div class="body">
       <div class="hdr">
@@ -512,7 +595,7 @@ function cardEl(s){
   if (tafBtn) tafBtn.addEventListener("click", () => {
     if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; tafBtn.textContent="Forecast (TAF) ▾"; return; }
     slot.dataset.open = "1"; tafBtn.textContent = "Hide forecast ▴";
-    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf, true)}</div></div>`;
+    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafBlock(s.taf, true)}</div></div>`;
   });
   wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"), atisFor(s.icaoId));
   return card;
@@ -572,7 +655,7 @@ async function load(c, opts){
         loadAtisAll(),
         getJson(`${API}/taf?bbox=${s},${w},${n},${e}&format=json`).catch(() => [])
       ]);
-      const tafById = {}; for (const t of tafs) tafById[t.icaoId] = t.rawTAF || "";
+      const tafById = {}; for (const t of tafs) tafById[t.icaoId] = t;
       lastStations = metars
         .map(m => ({...m, dist: distanceNm(c.lat, c.lon, m.lat, m.lon), taf: tafById[m.icaoId] || null}))
         .sort((a,b) => a.dist - b.dist);
