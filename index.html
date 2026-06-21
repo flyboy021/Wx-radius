@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#11161f" />
-<title>Wx Radius — METAR/TAF within 50nm</title>
+<title>Wx Radius — METAR/TAF nearby</title>
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-192.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -30,33 +30,56 @@
   .search button{background:var(--accent);color:#fff;border:0;border-radius:8px;height:40px;
     padding:0 14px;font-weight:700;font-size:15px}
   .search button.ghost{background:var(--panel2);border:1px solid var(--line)}
-  #map{height:42vh;width:100%;background:#0a0e14}
-  .legend{display:flex;align-items:center;gap:14px;background:var(--panel);
-    padding:6px 12px;flex-wrap:wrap}
+  /* controls */
+  .controls{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{background:transparent;color:var(--muted);border:0;height:32px;padding:0 12px;font-size:13px;font-weight:700}
+  .seg button.on{background:var(--accent);color:#fff}
+  .toggle{background:var(--panel2);color:var(--muted);border:1px solid var(--line);border-radius:8px;
+    height:32px;padding:0 12px;font-size:13px;font-weight:700}
+  .toggle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  #map{height:40vh;width:100%;background:#0a0e14}
+  .legend{display:flex;align-items:center;gap:14px;background:var(--panel);padding:6px 12px;flex-wrap:wrap}
   .legend .item{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
   .dot{width:11px;height:11px;border-radius:50%}
   #status{padding:8px 12px;font-size:13px}
   #status.err{background:#2a1416;color:#ff9094}
   #list{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
-  .card{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;gap:10px;cursor:pointer}
+  .card{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;gap:10px;cursor:pointer;
+    border-left:4px solid transparent}
   .chip{min-width:46px;height:22px;border-radius:5px;color:#fff;font-size:11px;font-weight:800;
     display:flex;align-items:center;justify-content:center;margin-top:2px}
   .body{flex:1;min-width:0}
-  .id{font-size:15px;font-weight:700}
-  .dist{color:var(--muted);font-weight:500;font-size:12px;margin-left:6px}
-  .name{color:var(--muted);font-size:12px;margin:1px 0 3px}
+  .hdr{display:flex;align-items:baseline;gap:6px}
+  .id{font-size:16px;font-weight:800;letter-spacing:.02em}
+  .dist{color:var(--muted);font-weight:500;font-size:12px}
+  .name{color:var(--muted);font-size:12px;margin:1px 0 5px}
+  .decoded{display:flex;flex-wrap:wrap;gap:4px 16px;margin:2px 0 7px}
+  .decoded .d{font-size:13px;color:var(--txt)}
+  .decoded .d b{color:var(--muted);font-weight:600;margin-right:5px;font-size:10px;
+    text-transform:uppercase;letter-spacing:.04em}
+  .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;
+    padding:1px 6px;border-radius:4px;margin-right:6px;vertical-align:middle}
+  .tag.metar{background:#23406b;color:#bcd6ff}
+  .tag.taf{background:#3a2d5e;color:#d9c6ff}
   .raw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#cdd6e0;
     white-space:pre-wrap;word-break:break-word}
-  .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#8fd0ff;margin-top:5px;
-    white-space:pre-wrap;word-break:break-word}
+  .rawline{margin-top:2px}
+  .taf-wrap{margin-top:7px}
+  .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#9fd6ff;
+    white-space:pre-wrap;word-break:break-word;margin-top:2px}
   .taf.none{color:#6b7a8d;font-style:italic}
+  .hint{color:#5f6e80;font-size:11px;margin-top:6px}
   footer{background:var(--panel);padding:8px 12px max(env(safe-area-inset-bottom),8px);
     display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid var(--line)}
   .disc{color:#6b7a8d;font-size:10px;flex:1}
   .tip{background:#ffb400;color:#1a1100;border:0;border-radius:8px;padding:9px 14px;
     font-weight:800;font-size:13px;white-space:nowrap}
   .leaflet-popup-content{margin:8px 10px;font-size:12px}
-  .pin{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0006}
+  /* map station marker + id label */
+  .stn{display:flex;align-items:center;gap:3px;white-space:nowrap}
+  .stn .pin{width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0006;flex:none}
+  .stn .lbl{font-size:10px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 1px 2px #000}
   .you{width:16px;height:16px;border-radius:50%;background:#1e90ff;border:3px solid #fff;
     box-shadow:0 0 0 2px #1e90ff88, 0 0 12px #1e90ffcc}
   .you::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:16px;
@@ -68,15 +91,25 @@
 <div id="app">
   <header>
     <div class="row1">
-      <h1>Wx Radius · 50nm</h1>
+      <h1>Wx Radius</h1>
       <span id="updated" class="sub"></span>
     </div>
     <div id="where" class="sub">Locating…</div>
     <div class="search">
-      <input id="q" placeholder="Airport id (e.g. KJFK)" autocapitalize="characters"
+      <input id="q" placeholder="Airport id (e.g. JFK or KJFK)" autocapitalize="characters"
              autocorrect="off" spellcheck="false" inputmode="text" />
       <button id="go">Go</button>
       <button id="gps" class="ghost" title="Use my location">◎</button>
+    </div>
+    <div class="controls">
+      <div class="seg" id="radiusSeg">
+        <button data-r="25">25</button>
+        <button data-r="50" class="on">50</button>
+        <button data-r="100">100</button>
+      </div>
+      <button id="filterBtn" class="toggle" title="Filter by conditions">All</button>
+      <button id="radarBtn" class="toggle" title="Toggle weather radar">☔ Radar</button>
+      <button id="refreshBtn" class="toggle" title="Refresh">↻</button>
     </div>
   </header>
 
@@ -94,7 +127,7 @@
 
   <footer>
     <span class="disc">Situational awareness only — not an official weather briefing.
-      Data: FAA Aviation Weather Center.</span>
+      Data: FAA Aviation Weather Center · Radar: RainViewer.</span>
     <button id="tip" class="tip">☕ Tip the dev</button>
   </footer>
 </div>
@@ -102,13 +135,21 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 // ---- CONFIG -------------------------------------------------------------
-// Put your tip-jar link here. Easiest options (no code, ~2 min to set up):
-//   • Stripe Payment Link:  https://dashboard.stripe.com/payment-links
-//   • Ko-fi:                https://ko-fi.com
-//   • Buy Me a Coffee:      https://buymeacoffee.com
+// Put your tip-jar link here (Stripe Payment Link / Ko-fi / Buy Me a Coffee).
 const TIP_URL = "https://buymeacoffee.com/yourname"; // <-- change me
-const RADIUS_NM = 50;
-const DEFAULT_ZOOM = 10; // initial zoom — centered on you, zoomed in on your area
+const DEFAULT_ZOOM = 10;
+const ZOOM_FOR = {25:11, 50:10, 100:9};
+
+// Cloudflare Worker proxy (solves CORS). Empty "" = use local node server.
+const PROXY_BASE = "https://metarsfast.dehaven-jeremy.workers.dev";
+const API = (PROXY_BASE || "") + "/api/data";
+
+// ---- state --------------------------------------------------------------
+let radiusNm = 50;
+let center = null;
+let lastStations = [];
+let currentFilter = "all";   // "all" | "ifr"
+let radarLayer = null;
 
 // ---- geo helpers --------------------------------------------------------
 const toRad = d => d * Math.PI / 180;
@@ -124,15 +165,48 @@ function distanceNm(a,b,c,d){
 const COLORS = {VFR:"#11a911", MVFR:"#2b6fff", IFR:"#e0152b", LIFR:"#d017d0"};
 const catColor = c => COLORS[c] || "#8a93a0";
 
+// ---- plain-English decoding --------------------------------------------
+function fmtWind(s){
+  if (s.wdir === 0 && s.wspd === 0) return "Calm";
+  const dir = (s.wdir === "VRB" || s.wdir == null) ? "Variable" : String(s.wdir).padStart(3,"0") + "°";
+  let t = `${dir} at ${s.wspd} kt`;
+  if (s.wgst) t += `, gusts ${s.wgst} kt`;
+  return t;
+}
+const COVER = {FEW:"Few", SCT:"Scattered", BKN:"Broken", OVC:"Overcast",
+  OVX:"Obscured", CLR:"Clear", SKC:"Clear", NSC:"No sig cloud", CAVOK:"Clear"};
+function fmtClouds(s){
+  if (!s.clouds || !s.clouds.length || ["CLR","SKC","CAVOK"].includes(s.cover)) return "Sky clear";
+  return s.clouds.map(c => c.base != null
+      ? `${COVER[c.cover]||c.cover} ${Number(c.base).toLocaleString()} ft`
+      : (COVER[c.cover]||c.cover)).join(", ");
+}
+function fmtVis(s){ return s.visib != null ? `${s.visib} sm` : "—"; }
+function fmtAlt(s){ return s.altim != null ? `${(s.altim*0.0295299830714).toFixed(2)}" Hg` : "—"; }
+function fmtTemp(s){ return s.temp != null ? `${Math.round(s.temp)}°C / dew ${Math.round(s.dewp)}°C` : "—"; }
+
+function decodedGrid(s){
+  const rows = [
+    ["Flight cat", s.fltCat || "—"],
+    ["Wind", fmtWind(s)],
+    ["Visibility", fmtVis(s)],
+    ["Sky", fmtClouds(s)],
+    ["Temp", fmtTemp(s)],
+    ["Altimeter", fmtAlt(s)],
+  ];
+  return `<div class="decoded">${rows.map(([k,v]) =>
+    `<span class="d"><b>${k}</b>${v}</span>`).join("")}</div>`;
+}
+function summaryLine(s){
+  return `${fmtWind(s)} · ${fmtVis(s)} · ${fmtClouds(s)}`;
+}
+// Break a raw TAF into readable forecast lines.
+function fmtTaf(raw){
+  if (!raw) return null;
+  return raw.replace(/\s+(FM\d{6}|BECMG|TEMPO|PROB\d{2})/g, "\n$1").trim();
+}
+
 // ---- API ----------------------------------------------------------------
-// The weather service blocks direct browser calls (CORS), so requests go
-// through a tiny proxy. Pick ONE:
-//   A) No local server (recommended): deploy worker.js to Cloudflare once
-//      (free) and paste its URL below. Then just open this file or host it on
-//      GitHub Pages — no `node server.js` needed.
-//   B) Local node server: leave PROXY_BASE = "" and run `node server.js`.
-const PROXY_BASE = "https://metarsfast.dehaven-jeremy.workers.dev"; // your Cloudflare Worker
-const API = (PROXY_BASE || "") + "/api/data";
 async function getJson(url){
   const r = await fetch(url);
   if (r.status === 204) return [];
@@ -140,7 +214,7 @@ async function getJson(url){
   return r.json();
 }
 async function fetchWx(lat, lon){
-  const [s,w,n,e] = bbox(lat, lon, RADIUS_NM);
+  const [s,w,n,e] = bbox(lat, lon, radiusNm);
   const box = `${s},${w},${n},${e}`;
   const [metars, tafs] = await Promise.all([
     getJson(`${API}/metar?bbox=${box}&format=json`),
@@ -150,31 +224,39 @@ async function fetchWx(lat, lon){
   for (const t of tafs) tafById[t.icaoId] = t.rawTAF || "";
   return metars
     .map(m => ({...m, dist: distanceNm(lat, lon, m.lat, m.lon), taf: tafById[m.icaoId] || null}))
-    .filter(m => m.dist <= RADIUS_NM)
+    .filter(m => m.dist <= radiusNm)
     .sort((a,b) => a.dist - b.dist);
 }
-async function geocode(idRaw){
-  const id = idRaw.trim().toUpperCase();
-  if (!id) throw new Error("Enter an airport identifier");
+async function lookupId(id){
   const m = await getJson(`${API}/metar?ids=${id}&format=json`);
   if (m.length && m[0].lat != null) return {lat:m[0].lat, lon:m[0].lon, name:m[0].name || id};
   const a = await getJson(`${API}/airport?ids=${id}&format=json`);
   if (a.length && a[0].lat != null) return {lat:a[0].lat, lon:a[0].lon, name:(a[0].name||id).trim()};
+  return null;
+}
+async function geocode(idRaw){
+  const id = idRaw.trim().toUpperCase();
+  if (!id) throw new Error("Enter an airport identifier");
+  // Try as typed, then — for 3-char codes like "JFK" — auto-prepend "K".
+  const candidates = [id];
+  if (id.length === 3 && /^[A-Z0-9]+$/.test(id) && id[0] !== "K") candidates.push("K" + id);
+  for (const c of candidates){
+    const hit = await lookupId(c);
+    if (hit) return hit;
+  }
   throw new Error(`Airport "${id}" not found`);
 }
 
 // ---- map ----------------------------------------------------------------
-const map = L.map("map", {zoomControl:true, attributionControl:false})
-  .setView([39.5,-98.35], 4);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {maxZoom:18})
-  .addTo(map);
+const map = L.map("map", {zoomControl:true, attributionControl:false}).setView([39.5,-98.35], 4);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {maxZoom:18}).addTo(map);
 let layer = L.layerGroup().addTo(map);
-let circle = null;
-let youMarker = null;
+let circle = null, youMarker = null;
 
-function pinIcon(cat){
-  return L.divIcon({className:"", html:`<div class="pin" style="background:${catColor(cat)}"></div>`,
-    iconSize:[18,18], iconAnchor:[9,9]});
+function stationIcon(s){
+  return L.divIcon({className:"",
+    html:`<div class="stn"><span class="pin" style="background:${catColor(s.fltCat)}"></span><span class="lbl">${s.icaoId}</span></div>`,
+    iconSize:[90,20], iconAnchor:[10,11]});
 }
 function youIcon(){
   return L.divIcon({className:"", html:`<div class="you"></div>`, iconSize:[16,16], iconAnchor:[8,8]});
@@ -182,70 +264,82 @@ function youIcon(){
 
 // ---- UI -----------------------------------------------------------------
 const $ = id => document.getElementById(id);
-let center = null;
-
 function zulu(d){ return d ? d.toUTCString().slice(17,22) + "Z" : ""; }
 function setStatus(msg, isErr){
   const el = $("status"); el.textContent = msg || ""; el.className = isErr ? "err" : "";
   el.style.display = msg ? "block" : "none";
 }
+function visibleStations(){
+  return currentFilter === "ifr"
+    ? lastStations.filter(s => s.fltCat === "IFR" || s.fltCat === "LIFR")
+    : lastStations;
+}
 
-function render(stations){
-  layer.clearLayers();
+function drawBase(){
   if (circle) map.removeLayer(circle);
-  if (center){
-    circle = L.circle([center.lat, center.lon], {radius: RADIUS_NM*1852,
-      color:"#2b6fff", weight:1.5, opacity:.6, fillColor:"#2b6fff", fillOpacity:.06}).addTo(map);
-    if (youMarker) map.removeLayer(youMarker);
-    youMarker = L.marker([center.lat, center.lon], {icon: youIcon(), zIndexOffset:1000})
-      .addTo(map).bindPopup(center.name === "My location" ? "You are here" : center.name);
-  }
+  if (youMarker) map.removeLayer(youMarker);
+  if (!center) return;
+  circle = L.circle([center.lat, center.lon], {radius: radiusNm*1852,
+    color:"#2b6fff", weight:1.5, opacity:.6, fillColor:"#2b6fff", fillOpacity:.06}).addTo(map);
+  youMarker = L.marker([center.lat, center.lon], {icon: youIcon(), zIndexOffset:1000})
+    .addTo(map).bindPopup(center.name === "My location" ? "You are here" : center.name);
+  map.setView([center.lat, center.lon], ZOOM_FOR[radiusNm] || DEFAULT_ZOOM);
+}
+
+function renderStations(){
+  layer.clearLayers();
   const list = $("list"); list.innerHTML = "";
-  if (!stations.length){
-    list.innerHTML = `<div class="card"><div class="body name">No reporting stations within ${RADIUS_NM}nm.</div></div>`;
+  const arr = visibleStations();
+  if (!arr.length){
+    list.innerHTML = `<div class="card"><div class="body name">${
+      lastStations.length ? "No stations match this filter." : "No reporting stations within " + radiusNm + "nm."
+    }</div></div>`;
+    return;
   }
-  const pts = [];
-  for (const s of stations){
-    const m = L.marker([s.lat, s.lon], {icon: pinIcon(s.fltCat)}).addTo(layer);
-    m.bindPopup(`<b>${s.icaoId} · ${s.fltCat||"?"}</b><br>${s.rawOb||""}`);
-    pts.push([s.lat, s.lon]);
+  for (const s of arr){
+    const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
+    m.bindPopup(`<b>${s.icaoId} · ${s.fltCat||"?"}</b><br>${summaryLine(s)}<br><span style="color:#666">${s.rawOb||""}</span>`);
 
     const card = document.createElement("div");
     card.className = "card";
+    card.style.borderLeftColor = catColor(s.fltCat);
     card.innerHTML = `
       <div class="chip" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</div>
       <div class="body">
-        <div><span class="id">${s.icaoId}</span><span class="dist">${Math.round(s.dist)} nm</span></div>
-        <div class="name">${(s.name||"").trim()}</div>
-        <div class="raw">${s.rawOb||""}</div>
+        <div class="hdr"><span class="id">${s.icaoId}</span><span class="dist">${Math.round(s.dist)} nm · ${(s.name||"").trim()}</span></div>
+        ${decodedGrid(s)}
+        <div class="rawline"><span class="tag metar">METAR · ${s.icaoId}</span><span class="raw">${s.rawOb||""}</span></div>
         <div class="taf-slot"></div>
+        <div class="hint">Tap for the forecast (TAF)</div>
       </div>`;
+    const taf = fmtTaf(s.taf);
     card.addEventListener("click", () => {
-      map.setView([s.lat, s.lon], 9);
+      map.setView([s.lat, s.lon], 10);
       m.openPopup();
       const slot = card.querySelector(".taf-slot");
-      if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; return; }
+      const hint = card.querySelector(".hint");
+      if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; if(hint) hint.style.display=""; return; }
       slot.dataset.open = "1";
-      slot.innerHTML = s.taf
-        ? `<div class="taf">TAF  ${s.taf}</div>`
-        : `<div class="taf none">No TAF for this station.</div>`;
+      if (hint) hint.style.display = "none";
+      slot.innerHTML = taf
+        ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${taf}</div></div>`
+        : `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><span class="taf none">No forecast issued for this station.</span></div>`;
     });
     list.appendChild(card);
   }
-  // Center on the pilot's location, zoomed in. (Pinch/scroll out to see the full 50nm.)
-  if (center) map.setView([center.lat, center.lon], DEFAULT_ZOOM);
 }
 
 async function load(c){
   if (!c) return;
   center = c;
-  $("where").textContent = c.name;
+  $("where").textContent = `${c.name} · ${radiusNm} nm`;
   setStatus("Loading weather…");
   try{
-    const data = await fetchWx(c.lat, c.lon);
-    render(data);
+    lastStations = await fetchWx(c.lat, c.lon);
+    drawBase();
+    renderStations();
     $("updated").textContent = "as of " + zulu(new Date());
-    setStatus(data.length ? "" : `No stations within ${RADIUS_NM}nm.`);
+    setStatus(lastStations.length ? "" : `No stations within ${radiusNm}nm.`);
   }catch(e){
     setStatus(e.message || "Could not load weather", true);
   }
@@ -261,6 +355,21 @@ function useMyLocation(){
   );
 }
 
+// ---- radar overlay (RainViewer) ----------------------------------------
+async function toggleRadar(){
+  if (radarLayer){ map.removeLayer(radarLayer); radarLayer = null; $("radarBtn").classList.remove("on"); return; }
+  try{
+    const j = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json();
+    const past = (j.radar && j.radar.past) || [];
+    if (!past.length) throw new Error();
+    const f = past[past.length - 1];
+    radarLayer = L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
+      {opacity:0.55, zIndex:400}).addTo(map);
+    $("radarBtn").classList.add("on");
+  }catch(e){ setStatus("Radar unavailable right now.", true); }
+}
+
+// ---- events -------------------------------------------------------------
 $("go").addEventListener("click", async () => {
   try{ setStatus("Searching…"); await load(await geocode($("q").value)); }
   catch(e){ setStatus(e.message, true); }
@@ -268,6 +377,22 @@ $("go").addEventListener("click", async () => {
 $("q").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
 $("gps").addEventListener("click", useMyLocation);
 $("tip").addEventListener("click", () => window.open(TIP_URL, "_blank", "noopener"));
+$("refreshBtn").addEventListener("click", () => center && load(center));
+$("radarBtn").addEventListener("click", toggleRadar);
+
+$("radiusSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  radiusNm = Number(b.dataset.r);
+  [...$("radiusSeg").children].forEach(x => x.classList.toggle("on", x === b));
+  if (center) load(center);
+});
+$("filterBtn").addEventListener("click", () => {
+  currentFilter = currentFilter === "all" ? "ifr" : "all";
+  const btn = $("filterBtn");
+  btn.textContent = currentFilter === "ifr" ? "IFR+" : "All";
+  btn.classList.toggle("on", currentFilter === "ifr");
+  renderStations();
+});
 
 // PWA service worker
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
