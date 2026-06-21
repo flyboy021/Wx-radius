@@ -82,6 +82,7 @@
   .tag.taf{background:#3a2d5e;color:#d9c6ff}
   .raw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#cdd6e0;
     white-space:pre-wrap;word-break:break-word;line-height:1.45}
+  .raw-id{color:#fff;font-weight:800}
   .rawline{margin-top:2px}
   .taf-wrap{margin-top:7px}
   .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#9fd6ff;
@@ -237,6 +238,11 @@ function decodedGrid(s){
 }
 function summaryLine(s){
   return `${fmtWind(s)} · ${fmtVis(s)} · ${fmtClouds(s)}`;
+}
+// Show the raw observation and highlight its leading "METAR KXXX" / "SPECI KXXX".
+function highlightRaw(raw){
+  if (!raw) return "";
+  return raw.replace(/^(METAR|SPECI)\s+(\S+)/, '<span class="raw-id">$1 $2</span>');
 }
 // Break a raw TAF into readable forecast lines.
 function fmtTaf(raw){
@@ -426,7 +432,7 @@ function popupEl(s){
   const metarbox = el.querySelector(".metarbox");
   const setMode = mode => {
     metarbox.innerHTML = mode === "raw"
-      ? `<div class="rawline"><span class="tag metar">METAR · ${s.icaoId}</span><span class="raw">${s.rawOb||""}</span></div>`
+      ? `<div class="rawline"><span class="raw">${highlightRaw(s.rawOb)}</span></div>`
       : decodedGrid(s);
     el.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
   };
@@ -478,7 +484,7 @@ function cardEl(s){
   const metarbox = card.querySelector(".metarbox");
   const setMode = mode => {
     metarbox.innerHTML = mode === "raw"
-      ? `<div class="rawline"><span class="tag metar">METAR · ${s.icaoId}</span><span class="raw">${s.rawOb||""}</span></div>`
+      ? `<div class="rawline"><span class="raw">${highlightRaw(s.rawOb)}</span></div>`
       : decodedGrid(s);
     card.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
   };
@@ -610,30 +616,62 @@ async function fetchMetarsBox(lat, lon, nm){
   try{ return await getJson(`${API}/metar?bbox=${s},${w},${n},${e}&format=json`); }
   catch(e){ return []; }
 }
+function inConus(loc){
+  return loc.lat >= 24 && loc.lat <= 49.5 && loc.lon >= -125 && loc.lon <= -66;
+}
+function areaBounds(loc, nm){
+  const [s,w,n,e] = bbox(loc.lat, loc.lon, nm);
+  return [[s,w],[n,e]];
+}
 async function startup(){
   const skip = $("skipBtn"); if (skip) skip.style.display = "";
-  setStatus("Weather across the U.S. — finding you…");
-  const locP = getLocation().then(l => { locValue = l; return l; }).catch(() => null);
-
-  // Phase 1 — national splash. Preload the regional METARs during the 5s hold.
-  await showNational();
-  const loc = await locP;
-  const regionalP = loc ? fetchMetarsBox(loc.lat, loc.lon, 225) : Promise.resolve([]);
-  await sleep(5000);
+  setStatus("Finding your location…");
+  const loc = await getLocation().catch(() => null);
   if (introDone) return;
-  if (!loc){ cancelIntro(); setStatus("Turn on location, or search an airport above.", true); return; }
 
-  // Phase 2 — region view. Regional dots are ready; preload the local 50nm data now.
-  const regional = await regionalP;
-  if (introDone) return;
-  drawDots(regional, 4);
-  setStatus("Zooming to your region…");
-  map.flyTo([loc.lat, loc.lon], 7, {duration:1.6});
+  if (!loc){
+    // No location — show a U.S. overview and ask the user to search.
+    await showNational();
+    await sleep(4000);
+    if (introDone) return;
+    cancelIntro();
+    setStatus("Turn on location, or search an airport above.", true);
+    return;
+  }
+  locValue = loc;
+  const conus = inConus(loc);
+  setStatus(conus ? "Weather across the U.S.…" : "Weather in your region…");
+
+  // ---- Phase 1: first screen ----
+  if (conus){
+    await showNational();                                   // national U.S. view + dots
+  } else {
+    map.fitBounds(areaBounds(loc, 348), {padding:[20,20]}); // ~400 mile region for AK / outside U.S.
+    const m = await fetchMetarsBox(loc.lat, loc.lon, 348);
+    if (introDone) return;
+    drawDots(m, 3.5);
+  }
+
+  // Preload the local 50nm data (and, for U.S., the 225nm region) during the 5s hold.
   const localP = Promise.all([ fetchWx(loc.lat, loc.lon), loadAtisAll() ]);
+  const regionalP = conus ? fetchMetarsBox(loc.lat, loc.lon, 225) : null;
   await sleep(5000);
   if (introDone) return;
 
-  // Phase 3 — local view. Data already loaded, so just glide in and render.
+  // ---- Phase 2 (U.S. only): 225nm region ----
+  if (conus){
+    const regional = await regionalP;
+    if (introDone) return;
+    drawDots(regional, 4);
+    setStatus("Zooming to your region…");
+    map.flyTo([loc.lat, loc.lon], 7, {duration:1.6});
+    await sleep(5000);
+    if (introDone) return;
+  } else {
+    setStatus("Zooming in…");
+  }
+
+  // ---- Final: local 25/50/100nm view (data already preloaded) ----
   const [stations] = await localP;
   if (introDone) return;
   cancelIntro();
@@ -654,7 +692,8 @@ async function toggleRadar(){
     if (!past.length) throw new Error();
     const f = past[past.length - 1];
     radarLayer = L.tileLayer(`${j.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
-      {opacity:0.55, zIndex:400, tileSize:256, maxNativeZoom:8, maxZoom:18}).addTo(map);
+      {opacity:0.55, zIndex:400, tileSize:256, maxNativeZoom:6, maxZoom:18,
+       errorTileUrl:"data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=="}).addTo(map);
     $("radarBtn").classList.add("on");
   }catch(e){ setStatus("Radar unavailable right now.", true); }
 }
