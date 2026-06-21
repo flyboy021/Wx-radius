@@ -231,6 +231,40 @@ function fmtTaf(raw){
   if (!raw) return null;
   return raw.replace(/\s+(FM\d{6}|BECMG|TEMPO|PROB\d{2})/g, "\n$1").trim();
 }
+// Flight category from a single TAF/forecast line's visibility + ceiling.
+function parseVisSM(line){
+  let m = line.match(/\b(P|M)?(\d+)(?:\s(\d+)\/(\d+))?SM\b/);
+  if (m){ let v = parseInt(m[2],10); if (m[3]) v += parseInt(m[3],10)/parseInt(m[4],10);
+    if (m[1] === "P") v = Math.max(v, 6.01); return v; }
+  m = line.match(/\b(P|M)?(\d+)\/(\d+)SM\b/);
+  if (m){ let v = parseInt(m[2],10)/parseInt(m[3],10); if (m[1] === "P") v = Math.max(v,6.01); return v; }
+  return null;
+}
+function parseCeil(line){
+  let ceil = null, m; const re = /\b(VV|BKN|OVC)(\d{3})\b/g;
+  while ((m = re.exec(line))){ const ft = parseInt(m[2],10)*100; if (ceil == null || ft < ceil) ceil = ft; }
+  return ceil;
+}
+function catFromVisCeil(vis, ceil){
+  if (vis == null && ceil == null) return null;
+  const v = vis == null ? 99 : vis, c = ceil == null ? 99999 : ceil;
+  if (c < 500 || v < 1) return "LIFR";
+  if (c < 1000 || v < 3) return "IFR";
+  if (c <= 3000 || v <= 5) return "MVFR";
+  return "VFR";
+}
+function tafHtml(raw){
+  if (!raw) return "";
+  const lines = raw.replace(/\s+(FM\d{6}|BECMG|TEMPO|PROB\d{2})/g, "\n$1").trim().split("\n");
+  return lines.map(ln => {
+    const cat = catFromVisCeil(parseVisSM(ln), parseCeil(ln));
+    if (cat){
+      const col = catColor(cat);
+      return `<div class="taf-line" style="color:${col};border-left-color:${col}"><span class="taf-cat">${cat}</span>${ln}</div>`;
+    }
+    return `<div class="taf-line">${ln}</div>`;
+  }).join("");
+}
 
 // ---- ATIS (digital ATIS, available only at larger towered airports) -----
 // Fetch the full list of airports currently broadcasting D-ATIS once, so we
