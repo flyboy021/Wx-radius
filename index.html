@@ -25,7 +25,16 @@
   .row1{display:flex;align-items:baseline;gap:8px}
   h1{font-size:18px;margin:0;font-weight:700;flex:none}
   #zulu{flex:1;text-align:center;font-weight:700;font-size:15px;color:#cdd6e0;
-    letter-spacing:.04em;font-variant-numeric:tabular-nums}
+    letter-spacing:.04em;font-variant-numeric:tabular-nums;cursor:pointer;user-select:none}
+  #zulu.local-time{color:#ffb454}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;
+    justify-content:center;z-index:9999;padding:20px}
+  .modal-box{background:#1c2430;border:1px solid #4a3526;border-radius:14px;padding:22px;
+    max-width:330px;text-align:center;box-shadow:0 12px 44px #000a}
+  .modal-title{color:#ffb454;font-size:18px;font-weight:800;margin-bottom:10px}
+  .modal-msg{color:#e7eef6;font-size:14px;line-height:1.5;margin-bottom:18px}
+  .modal-btn{background:#e0152b;color:#fff;border:0;border-radius:8px;padding:11px 20px;
+    font-weight:800;font-size:14px}
   #zulu .lt{color:var(--muted);font-weight:600}
   #updated{flex:none}
   .sub{color:var(--muted);font-size:12px;margin-top:2px}
@@ -92,6 +101,8 @@
   .raw{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;
     color:#cdd6e0;white-space:pre-wrap;word-break:break-word;line-height:1.45}
   .raw-id{font-weight:800}
+  .metar-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .metar-head .raw-id{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
   .cat-txt{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;font-weight:800}
   .rawline{margin-top:2px;display:flex;align-items:flex-start;gap:8px}
   .taf-wrap{margin-top:7px}
@@ -147,7 +158,7 @@
   <header>
     <div class="row1">
       <h1>Wx Radius</h1>
-      <span id="zulu" aria-label="Zulu and local time"></span>
+      <span id="zulu" role="button" tabindex="0" title="Tap to switch Zulu / local time"></span>
       <span id="updated" class="sub"></span>
     </div>
     <div id="where" class="sub">Locating…</div>
@@ -201,6 +212,15 @@
       Data: FAA Aviation Weather Center · Radar: RainViewer.</span>
     <button id="tip" class="tip">☕ Tip the dev</button>
   </footer>
+
+  <div id="timeWarn" class="modal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">⚠ Use extreme caution!</div>
+      <div class="modal-msg">All times on this page are now shown in <b>LOCAL time</b>, not Zulu (UTC).
+        Aviation weather is normally read in Zulu — double-check before using.</div>
+      <button id="timeWarnOk" class="modal-btn">I understand</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -221,6 +241,8 @@ let center = null;
 let lastStations = [];
 let scope = "local";    // "local" (25/50/100nm) or "region"
 let metarMode = "raw";  // "raw" or "plain" — global for all stations
+let timeMode = "z";     // "z" (Zulu) or "local" — affects displayed times
+let lastUpdate = null;
 
 // ---- geo helpers --------------------------------------------------------
 const toRad = d => d * Math.PI / 180;
@@ -258,7 +280,7 @@ function fmtTemp(s){ return s.temp != null ? `${Math.round(s.temp)}°C / dew ${M
 
 function decodedGrid(s){
   const rows = [
-    ["Flight cat", s.fltCat || "—"],
+    ["Time", s.obsTime ? hmStr(new Date(s.obsTime*1000)) : "—"],
     ["Wind", fmtWind(s)],
     ["Visibility", fmtVis(s)],
     ["Sky", fmtClouds(s)],
@@ -324,10 +346,7 @@ function tafHtml(raw, pillLeft){
 }
 
 // ---- TAF plain-English decoding (from structured forecast periods) ------
-function tafTime(epoch){
-  const d = new Date(epoch * 1000), p = n => String(n).padStart(2,"0");
-  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}Z`;
-}
+function tafTime(epoch){ return hmStr(new Date(epoch * 1000)); }
 function fcstPrefix(f, first){
   const from = tafTime(f.timeFrom);
   if (first) return `From ${from}`;
@@ -595,11 +614,15 @@ function decodeRemarks(raw){
 }
 function metarBoxHtml(s, pillLeft){
   if (metarMode === "raw") return rawLineHtml(s, pillLeft);
+  const col = catColor(s.fltCat);
+  const id = `<span class="raw-id" style="color:${col}">${s.icaoId} METAR</span>`;
+  const pill = `<span class="taf-pill" style="background:${col}">${s.fltCat||"?"}</span>`;
+  const header = `<div class="metar-head">${pillLeft ? pill + id : id + pill}</div>`;
   const rmk = decodeRemarks(s.rawOb);
   const rmkHtml = rmk
     ? `<div class="rmk"><div class="rmk-h">Remarks</div>${rmk.map(r => `<div class="rmk-item">${r}</div>`).join("")}</div>`
     : "";
-  return decodedGrid(s) + rmkHtml;
+  return header + decodedGrid(s) + rmkHtml;
 }
 function popupEl(s){
   const el = document.createElement("div");
@@ -733,7 +756,7 @@ async function load(c, opts){
     document.title = lastStations[0]
       ? `${lastStations[0].icaoId} ${lastStations[0].fltCat} · Wx Radius`
       : "Wx Radius";
-    $("updated").textContent = "as of " + zulu(new Date());
+    lastUpdate = new Date(); setUpdated();
     setStatus(lastStations.length ? "" : "No reporting stations found.");
   }catch(e){
     setStatus(e.message || "Could not load weather", true);
@@ -871,8 +894,7 @@ let radarLayers = [], radarFrames = [], radarIdx = 0, radarTimer = null, radarCt
 const RADAR_ERR_TILE = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
 function radarFrameLabel(f){
-  const d = new Date(f.time * 1000), p = n => String(n).padStart(2,"0");
-  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}Z radar${f.nowcast ? " · forecast" : ""}`;
+  return `${hmStr(new Date(f.time * 1000))} radar${f.nowcast ? " · forecast" : ""}`;
 }
 function showRadarFrame(i){
   radarLayers[i].setOpacity(0.6);
@@ -943,17 +965,38 @@ $("modeBtn").addEventListener("click", () => {
   metarMode = metarMode === "raw" ? "plain" : "raw";
   $("modeBtn").textContent = metarMode === "raw" ? "Raw" : "Plain";
   $("modeBtn").classList.toggle("on", metarMode === "plain");
+  if (center) drawBase();   // rebuild the "you are here" popup too
   renderStations(); renderList();
 });
 
-// live Zulu (UTC) + local clock in the header
+// header clock — tap to switch all displayed times between Zulu and local
+function clockStr(d){
+  const p = n => String(n).padStart(2,"0");
+  return timeMode === "z"
+    ? `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}Z`
+    : d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false, timeZoneName:"short"});
+}
+function hmStr(d){
+  const p = n => String(n).padStart(2,"0");
+  return timeMode === "z"
+    ? `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}Z`
+    : d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", hour12:false, timeZoneName:"short"});
+}
+function setUpdated(){ $("updated").textContent = lastUpdate ? "as of " + hmStr(lastUpdate) : ""; }
 function tickZulu(){
-  const d = new Date(), p = n => String(n).padStart(2,"0");
-  const z = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}Z`;
-  const local = d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", hour12:false, timeZoneName:"short"});
-  $("zulu").innerHTML = `${z} <span class="lt">· ${local}</span>`;
+  $("zulu").textContent = clockStr(new Date());
+  $("zulu").classList.toggle("local-time", timeMode === "local");
 }
 tickZulu(); setInterval(tickZulu, 1000);
+$("zulu").addEventListener("click", () => {
+  timeMode = timeMode === "z" ? "local" : "z";
+  if (timeMode === "local") $("timeWarn").style.display = "flex";
+  tickZulu(); setUpdated();
+  if (center) drawBase();
+  renderStations(); renderList();
+  if (radarFrames.length) showRadarFrame(radarIdx);
+});
+$("timeWarnOk").addEventListener("click", () => { $("timeWarn").style.display = "none"; });
 
 // PWA service worker
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
