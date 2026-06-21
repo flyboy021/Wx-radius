@@ -338,8 +338,15 @@ function drawBase(){
   if (!center) return;
   circle = L.circle([center.lat, center.lon], {radius: radiusNm*1852,
     color:"#2b6fff", weight:1.5, opacity:.6, fillColor:"#2b6fff", fillOpacity:.06}).addTo(map);
-  youMarker = L.marker([center.lat, center.lon], {icon: youIcon(), zIndexOffset:1000})
-    .addTo(map).bindPopup(center.name === "My location" ? "You are here" : center.name);
+  youMarker = L.marker([center.lat, center.lon], {icon: youIcon(), zIndexOffset:1000}).addTo(map);
+  const near = lastStations[0];
+  if (near && near.dist <= 5){
+    // a reporting station sits under the "you" marker — let it open that station's details
+    youMarker.bindPopup(popupEl(near), {maxWidth:330, minWidth:250, autoPan:true});
+  } else {
+    youMarker.bindPopup(center.name === "My location" ? "You are here" : center.name);
+  }
+  youMarker.on("mouseover", () => youMarker.openPopup());
   map.setView([center.lat, center.lon], ZOOM_FOR[radiusNm] || DEFAULT_ZOOM);
 }
 
