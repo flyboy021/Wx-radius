@@ -99,6 +99,8 @@
     line-height:1.5;color:#9fd6ff;white-space:pre-wrap;word-break:break-word}
   .taf-pill{flex:none;color:#fff;font-size:11px;font-weight:800;padding:1px 7px;
     border-radius:5px;margin-top:1px}
+  .pill-left .taf-pill{min-width:46px;text-align:center;box-sizing:border-box}
+  .taf-pill.ghost{background:transparent}
   .taf.none{color:#6b7a8d;font-style:italic}
   .hint{color:#5f6e80;font-size:11px;margin-top:6px}
   footer{background:var(--panel);padding:8px 12px max(env(safe-area-inset-bottom),8px);
@@ -290,16 +292,22 @@ function catFromVisCeil(vis, ceil){
   if (c <= 3000 || v <= 5) return "MVFR";
   return "VFR";
 }
-function tafHtml(raw){
+function tafHtml(raw, pillLeft){
   if (!raw) return "";
   const lines = raw.replace(/\s+(FM\d{6}|BECMG|TEMPO|PROB\d{2})/g, "\n$1").trim().split("\n");
   return lines.map(ln => {
     const cat = catFromVisCeil(parseVisSM(ln), parseCeil(ln));
+    const txt = `<span class="taf-txt">${ln}</span>`;
     if (cat){
       const col = catColor(cat);
-      return `<div class="taf-line" style="border-left-color:${col}"><span class="taf-txt">${ln}</span><span class="taf-pill" style="background:${col}">${cat}</span></div>`;
+      const pill = `<span class="taf-pill" style="background:${col}">${cat}</span>`;
+      return pillLeft
+        ? `<div class="taf-line pill-left" style="border-left-color:${col}">${pill}${txt}</div>`
+        : `<div class="taf-line" style="border-left-color:${col}">${txt}${pill}</div>`;
     }
-    return `<div class="taf-line"><span class="taf-txt">${ln}</span></div>`;
+    return pillLeft
+      ? `<div class="taf-line pill-left"><span class="taf-pill ghost"></span>${txt}</div>`
+      : `<div class="taf-line">${txt}</div>`;
   }).join("");
 }
 
@@ -516,7 +524,7 @@ function cardEl(s){
   if (tafBtn) tafBtn.addEventListener("click", () => {
     if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; tafBtn.textContent="Forecast (TAF) ▾"; return; }
     slot.dataset.open = "1"; tafBtn.textContent = "Hide forecast ▴";
-    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf)}</div></div>`;
+    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf, true)}</div></div>`;
   });
   wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"), atisFor(s.icaoId));
   return card;
