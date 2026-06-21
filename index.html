@@ -359,7 +359,6 @@ function drawBase(){
     youMarker.bindPopup(center.name === "My location" ? "You are here" : center.name);
   }
   youMarker.on("mouseover", () => youMarker.openPopup());
-  map.setView([center.lat, center.lon], ZOOM_FOR[radiusNm] || DEFAULT_ZOOM);
 }
 
 function popupEl(s){
@@ -487,15 +486,22 @@ function updateFavicon(cat){
   if (link) link.href = cv.toDataURL("image/png");
 }
 
-async function load(c){
+async function load(c, opts){
   if (!c) return;
+  opts = opts || {};
   center = c;
   $("where").textContent = `${c.name} · ${radiusNm} nm`;
-  setStatus("Loading weather…");
+  if (!opts.preStations) setStatus("Loading weather…");
   try{
-    const [stations] = await Promise.all([ fetchWx(c.lat, c.lon), loadAtisAll() ]);
-    lastStations = stations;
+    if (opts.preStations){ lastStations = opts.preStations; }
+    else {
+      const [stations] = await Promise.all([ fetchWx(c.lat, c.lon), loadAtisAll() ]);
+      lastStations = stations;
+    }
     drawBase();
+    const z = ZOOM_FOR[radiusNm] || DEFAULT_ZOOM;
+    if (opts.animate) map.flyTo([c.lat, c.lon], z, {duration:1.4});
+    else map.setView([c.lat, c.lon], z);
     renderStations();
     renderList();
     if (lastStations[0]) updateFavicon(lastStations[0].fltCat);
@@ -503,6 +509,7 @@ async function load(c){
       ? `${lastStations[0].icaoId} ${lastStations[0].fltCat} · Wx Radius`
       : "Wx Radius";
     $("updated").textContent = "as of " + zulu(new Date());
+    setStatus(lastStations.length ? "" : `No reporting stations within ${radiusNm}nm.`);
   }catch(e){
     setStatus(e.message || "Could not load weather", true);
   }
@@ -550,30 +557,39 @@ async function showNational(){
     if (!introDone) drawDots(m, 3);
   }catch(e){ /* national splash is optional */ }
 }
-async function showRegional(loc){
-  try{
-    const [s,w,n,e] = bbox(loc.lat, loc.lon, 225);   // ~225nm box = denser local coverage
-    const m = await getJson(`${API}/metar?bbox=${s},${w},${n},${e}&format=json`);
-    if (!introDone) drawDots(m, 4);
-  }catch(e){ /* optional */ }
+async function fetchMetarsBox(lat, lon, nm){
+  const [s,w,n,e] = bbox(lat, lon, nm);
+  try{ return await getJson(`${API}/metar?bbox=${s},${w},${n},${e}&format=json`); }
+  catch(e){ return []; }
 }
 async function startup(){
   const skip = $("skipBtn"); if (skip) skip.style.display = "";
   setStatus("Weather across the U.S. — finding you…");
   const locP = getLocation().then(l => { locValue = l; return l; }).catch(() => null);
+
+  // Phase 1 — national splash. Preload the regional METARs during the 5s hold.
   await showNational();
+  const loc = await locP;
+  const regionalP = loc ? fetchMetarsBox(loc.lat, loc.lon, 225) : Promise.resolve([]);
   await sleep(5000);
   if (introDone) return;
-  const loc = await locP;
   if (!loc){ cancelIntro(); setStatus("Turn on location, or search an airport above.", true); return; }
+
+  // Phase 2 — region view. Regional dots are ready; preload the local 50nm data now.
+  const regional = await regionalP;
   if (introDone) return;
+  drawDots(regional, 4);
   setStatus("Zooming to your region…");
   map.flyTo([loc.lat, loc.lon], 7, {duration:1.6});
-  showRegional(loc);   // denser METARs for the region view
+  const localP = Promise.all([ fetchWx(loc.lat, loc.lon), loadAtisAll() ]);
   await sleep(5000);
   if (introDone) return;
+
+  // Phase 3 — local view. Data already loaded, so just glide in and render.
+  const [stations] = await localP;
+  if (introDone) return;
   cancelIntro();
-  await load(loc);
+  await load(loc, { preStations: stations, animate: true });
 }
 function skipIntro(){
   if (introDone) return;
