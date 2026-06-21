@@ -108,8 +108,13 @@
   .disc{color:#6b7a8d;font-size:10px;flex:1}
   .tip{background:#ffb400;color:#1a1100;border:0;border-radius:8px;padding:9px 14px;
     font-weight:800;font-size:13px;white-space:nowrap}
-  .radar-time{background:rgba(13,17,23,.82);color:#cdd6e0;font-size:12px;font-weight:700;
-    padding:3px 8px;border-radius:6px;font-variant-numeric:tabular-nums}
+  .radar-time{background:rgba(13,17,23,.85);color:#cdd6e0;font-size:12px;font-weight:700;
+    padding:5px 8px;border-radius:6px;font-variant-numeric:tabular-nums;line-height:1.4}
+  .radar-scale{display:flex;align-items:center;margin-bottom:3px}
+  .radar-scale span{width:15px;height:9px;display:inline-block}
+  .radar-scale span:first-child{border-radius:3px 0 0 3px}
+  .radar-scale span:nth-child(5){border-radius:0 3px 3px 0}
+  .radar-scale em{font-style:normal;margin-left:6px;color:#9fb0c3;font-weight:600;font-size:11px}
   .leaflet-popup-content-wrapper{background:#1c2430;color:var(--txt);border-radius:12px;
     box-shadow:0 6px 24px #0009}
   .leaflet-popup-tip{background:#1c2430}
@@ -164,6 +169,7 @@
         <button data-r="region">Region</button>
       </div>
       <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
+      <button id="modeBtn" class="toggle" title="Show raw or decoded weather">Raw</button>
       <button id="radarBtn" class="toggle" title="Toggle weather radar">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6">
           <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/>
@@ -209,7 +215,8 @@ const API = (PROXY_BASE || "") + "/api/data";
 let radiusNm = 50;
 let center = null;
 let lastStations = [];
-let scope = "local";   // "local" (25/50/100nm) or "region"
+let scope = "local";    // "local" (25/50/100nm) or "region"
+let metarMode = "raw";  // "raw" or "plain" — global for all stations
 
 // ---- geo helpers --------------------------------------------------------
 const toRad = d => d * Math.PI / 180;
@@ -445,31 +452,26 @@ function drawBase(){
   youMarker.on("mouseover", () => youMarker.openPopup());
 }
 
+// Raw or decoded METAR box, controlled globally by metarMode.
+function rawLineHtml(s, pillLeft){
+  const col = catColor(s.fltCat);
+  const pill = `<span class="taf-pill" style="background:${col}">${s.fltCat||"?"}</span>`;
+  const raw = `<span class="raw">${highlightRaw(s.rawOb, col)}</span>`;
+  return `<div class="rawline">${pillLeft ? pill + raw : raw + pill}</div>`;
+}
+function metarBoxHtml(s, pillLeft){
+  return metarMode === "raw" ? rawLineHtml(s, pillLeft) : decodedGrid(s);
+}
 function popupEl(s){
   const el = document.createElement("div");
   el.className = "pop";
   const taf = fmtTaf(s.taf);
   el.innerHTML = `
-    <div class="pop-h"><span class="pop-id">${s.icaoId}</span>
-      <span class="seg2">
-        <button type="button" data-m="raw" class="on">Raw</button>
-        <button type="button" data-m="plain">Plain</button>
-      </span></div>
+    <div class="pop-h"><span class="pop-id">${s.icaoId}</span></div>
     <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm away</div>
-    <div class="metarbox"></div>
+    <div class="metarbox">${metarBoxHtml(s, false)}</div>
     ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
-  const metarbox = el.querySelector(".metarbox");
-  const setMode = mode => {
-    metarbox.innerHTML = mode === "raw"
-      ? `<div class="rawline"><span class="raw">${highlightRaw(s.rawOb, catColor(s.fltCat))}</span><span class="taf-pill" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span></div>`
-      : decodedGrid(s);
-    el.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
-  };
-  setMode("raw");   // popups default to raw METAR
-  el.querySelector(".seg2").addEventListener("click", e => {
-    const b = e.target.closest("button"); if (b){ e.stopPropagation(); setMode(b.dataset.m); }
-  });
   wireAtis(el.querySelector(".atisBtn"), el.querySelector(".atis-slot"), atisFor(s.icaoId));
   return el;
 }
@@ -501,26 +503,11 @@ function cardEl(s){
       <div class="hdr">
         <span class="id">${s.icaoId}</span>
         <span class="dist">${Math.round(s.dist)} nm away · ${(s.name||"").trim()}</span>
-        <span class="seg2">
-          <button type="button" data-m="plain" class="on">Plain</button>
-          <button type="button" data-m="raw">Raw</button>
-        </span>
       </div>
-      <div class="metarbox"></div>
+      <div class="metarbox">${metarBoxHtml(s, true)}</div>
       ${taf ? `<button type="button" class="tafBtn">Forecast (TAF) ▾</button><div class="taf-slot"></div>` : ""}
       ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}
     </div>`;
-  const metarbox = card.querySelector(".metarbox");
-  const setMode = mode => {
-    metarbox.innerHTML = mode === "raw"
-      ? `<div class="rawline"><span class="taf-pill" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span><span class="raw">${highlightRaw(s.rawOb, catColor(s.fltCat))}</span></div>`
-      : decodedGrid(s);
-    card.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
-  };
-  setMode("raw");   // list view defaults to raw METAR
-  card.querySelector(".seg2").addEventListener("click", e => {
-    const b = e.target.closest("button"); if (b) setMode(b.dataset.m);
-  });
   const tafBtn = card.querySelector(".tafBtn"), slot = card.querySelector(".taf-slot");
   if (tafBtn) tafBtn.addEventListener("click", () => {
     if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; tafBtn.textContent="Forecast (TAF) ▾"; return; }
@@ -666,11 +653,11 @@ function inConus(loc){
   return loc.lat >= 24 && loc.lat <= 49.5 && loc.lon >= -125 && loc.lon <= -66;
 }
 function inAlaska(loc){
-  return loc.lat >= 51 && loc.lat <= 72 && loc.lon >= -170 && loc.lon <= -129;
+  return loc.lat >= 50 && loc.lat <= 72 && loc.lon >= -180 && loc.lon <= -129;
 }
 function regionBox(loc){
   if (inConus(loc)) return [24, -125, 49.5, -66];          // continental U.S.
-  if (inAlaska(loc)) return [51, -170, 72, -129];          // Alaska
+  if (inAlaska(loc)) return [50, -180, 72, -129];          // Alaska incl. western/Aleutians
   return bbox(loc.lat, loc.lon, 348);                      // ~400 miles elsewhere
 }
 function regionName(loc){
@@ -769,10 +756,18 @@ async function toggleRadar(){
     const now = ((j.radar && j.radar.nowcast) || []).map(f => ({...f, nowcast:true}));
     radarFrames = [...past, ...now];
     if (!radarFrames.length) throw new Error();
-    radarLayers = radarFrames.map(f => L.tileLayer(`${host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`,
+    radarLayers = radarFrames.map(f => L.tileLayer(`${host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`,
       {opacity:0, zIndex:400, tileSize:256, maxNativeZoom:6, maxZoom:18, errorTileUrl:RADAR_ERR_TILE}).addTo(map));
     radarCtl = L.control({position:"bottomleft"});
-    radarCtl.onAdd = () => { const d = L.DomUtil.create("div", "radar-time"); d.id = "radarTimeBox"; return d; };
+    radarCtl.onAdd = () => {
+      const d = L.DomUtil.create("div", "radar-time");
+      d.innerHTML = `<div class="radar-scale">
+          <span style="background:#3cc24a"></span><span style="background:#ffd400"></span>
+          <span style="background:#ff8c00"></span><span style="background:#e0152b"></span>
+          <span style="background:#b10dc9"></span><em>light → heavy</em></div>
+        <div id="radarTimeBox"></div>`;
+      return d;
+    };
     radarCtl.addTo(map);
     radarIdx = 0;
     showRadarFrame(0);
@@ -805,6 +800,12 @@ $("radiusSeg").addEventListener("click", e => {
   if (center) load(center);
 });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
+$("modeBtn").addEventListener("click", () => {
+  metarMode = metarMode === "raw" ? "plain" : "raw";
+  $("modeBtn").textContent = metarMode === "raw" ? "Raw" : "Plain";
+  $("modeBtn").classList.toggle("on", metarMode === "plain");
+  renderStations(); renderList();
+});
 
 // live Zulu (UTC) + local clock in the header
 function tickZulu(){
