@@ -1056,7 +1056,11 @@ $("modeBtn").addEventListener("click", () => {
 
 // header clock — tap to switch all displayed times between Zulu and local
 function clockStr(d){
-  // Header shows the user's own local time; with no GPS, the looked-up airport's zone.
+  // Zulu (grey) when off; the user's local time — or looked-up airport's zone — when on (amber).
+  if (timeMode === "z"){
+    const p = n => String(n).padStart(2,"0");
+    return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}Z`;
+  }
   const o = {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false, timeZoneName:"short"};
   if (headerTz) o.timeZone = headerTz;
   return d.toLocaleTimeString([], o);
