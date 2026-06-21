@@ -85,18 +85,20 @@
     padding:1px 6px;border-radius:4px;margin-right:6px;vertical-align:middle}
   .tag.metar{background:#23406b;color:#bcd6ff}
   .tag.taf{background:#3a2d5e;color:#d9c6ff}
-  .raw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#cdd6e0;
-    white-space:pre-wrap;word-break:break-word;line-height:1.45}
+  .raw{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;
+    color:#cdd6e0;white-space:pre-wrap;word-break:break-word;line-height:1.45}
   .raw-id{font-weight:800}
   .cat-txt{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;font-weight:800}
-  .rawline{margin-top:2px}
+  .rawline{margin-top:2px;display:flex;align-items:flex-start;gap:8px}
   .taf-wrap{margin-top:7px}
   .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#9fd6ff;
     white-space:pre-wrap;word-break:break-word;margin-top:2px;line-height:1.45}
-  .taf-line{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;line-height:1.5;
-    color:#9fd6ff;white-space:pre-wrap;word-break:break-word;padding:2px 0 2px 8px;
-    border-left:3px solid transparent;margin-top:2px}
-  .taf-cat{font-weight:800;margin-right:6px}
+  .taf-line{display:flex;align-items:flex-start;gap:8px;border-left:3px solid transparent;
+    padding:3px 0 3px 8px;margin-top:2px}
+  .taf-txt{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;
+    line-height:1.5;color:#9fd6ff;white-space:pre-wrap;word-break:break-word}
+  .taf-pill{flex:none;color:#fff;font-size:11px;font-weight:800;padding:1px 7px;
+    border-radius:5px;margin-top:1px}
   .taf.none{color:#6b7a8d;font-style:italic}
   .hint{color:#5f6e80;font-size:11px;margin-top:6px}
   footer{background:var(--panel);padding:8px 12px max(env(safe-area-inset-bottom),8px);
@@ -295,9 +297,9 @@ function tafHtml(raw){
     const cat = catFromVisCeil(parseVisSM(ln), parseCeil(ln));
     if (cat){
       const col = catColor(cat);
-      return `<div class="taf-line" style="color:${col};border-left-color:${col}"><span class="taf-cat">${cat}</span>${ln}</div>`;
+      return `<div class="taf-line" style="border-left-color:${col}"><span class="taf-txt">${ln}</span><span class="taf-pill" style="background:${col}">${cat}</span></div>`;
     }
-    return `<div class="taf-line">${ln}</div>`;
+    return `<div class="taf-line"><span class="taf-txt">${ln}</span></div>`;
   }).join("");
 }
 
@@ -451,7 +453,7 @@ function popupEl(s){
   const metarbox = el.querySelector(".metarbox");
   const setMode = mode => {
     metarbox.innerHTML = mode === "raw"
-      ? `<div class="rawline"><span class="cat-txt" style="color:${catColor(s.fltCat)}">${s.fltCat||"?"}</span><span class="raw"> - ${highlightRaw(s.rawOb, catColor(s.fltCat))}</span></div>`
+      ? `<div class="rawline"><span class="raw">${highlightRaw(s.rawOb, catColor(s.fltCat))}</span><span class="taf-pill" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span></div>`
       : decodedGrid(s);
     el.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
   };
@@ -502,7 +504,7 @@ function cardEl(s){
   const metarbox = card.querySelector(".metarbox");
   const setMode = mode => {
     metarbox.innerHTML = mode === "raw"
-      ? `<div class="rawline"><span class="cat-txt" style="color:${catColor(s.fltCat)}">${s.fltCat||"?"}</span><span class="raw"> - ${highlightRaw(s.rawOb, catColor(s.fltCat))}</span></div>`
+      ? `<div class="rawline"><span class="raw">${highlightRaw(s.rawOb, catColor(s.fltCat))}</span><span class="taf-pill" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span></div>`
       : decodedGrid(s);
     card.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
   };
