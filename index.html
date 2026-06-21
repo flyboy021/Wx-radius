@@ -87,7 +87,8 @@
   .tag.taf{background:#3a2d5e;color:#d9c6ff}
   .raw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#cdd6e0;
     white-space:pre-wrap;word-break:break-word;line-height:1.45}
-  .raw-id{color:#fff;font-weight:800}
+  .raw-id{font-weight:800}
+  .cat-txt{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;font-weight:800}
   .rawline{margin-top:2px}
   .taf-wrap{margin-top:7px}
   .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#9fd6ff;
@@ -255,9 +256,10 @@ function summaryLine(s){
   return `${fmtWind(s)} · ${fmtVis(s)} · ${fmtClouds(s)}`;
 }
 // Show the raw observation and highlight its leading "METAR KXXX" / "SPECI KXXX".
-function highlightRaw(raw){
+function highlightRaw(raw, col){
   if (!raw) return "";
-  return raw.replace(/^(METAR|SPECI)\s+(\S+)/, '<span class="raw-id">$1 $2</span>');
+  const style = col ? ` style="color:${col}"` : "";
+  return raw.replace(/^(METAR|SPECI)\s+(\S+)/, `<span class="raw-id"${style}>$1 $2</span>`);
 }
 // Break a raw TAF into readable forecast lines.
 function fmtTaf(raw){
@@ -443,16 +445,13 @@ function popupEl(s){
         <button type="button" data-m="plain">Plain</button>
       </span></div>
     <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm</div>
-    <div class="pop-body">
-      <span class="chip" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</span>
-      <div class="metarbox"></div>
-    </div>
+    <div class="metarbox"></div>
     ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafHtml(s.taf)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
   const metarbox = el.querySelector(".metarbox");
   const setMode = mode => {
     metarbox.innerHTML = mode === "raw"
-      ? `<div class="rawline"><span class="raw">${highlightRaw(s.rawOb)}</span></div>`
+      ? `<div class="rawline"><span class="cat-txt" style="color:${catColor(s.fltCat)}">${s.fltCat||"?"}</span><span class="raw"> - ${highlightRaw(s.rawOb, catColor(s.fltCat))}</span></div>`
       : decodedGrid(s);
     el.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
   };
@@ -487,7 +486,6 @@ function cardEl(s){
   card.style.borderLeftColor = catColor(s.fltCat);
   const taf = fmtTaf(s.taf);
   card.innerHTML = `
-    <div class="chip" style="background:${catColor(s.fltCat)}">${s.fltCat||"?"}</div>
     <div class="body">
       <div class="hdr">
         <span class="id">${s.icaoId}</span>
@@ -504,7 +502,7 @@ function cardEl(s){
   const metarbox = card.querySelector(".metarbox");
   const setMode = mode => {
     metarbox.innerHTML = mode === "raw"
-      ? `<div class="rawline"><span class="raw">${highlightRaw(s.rawOb)}</span></div>`
+      ? `<div class="rawline"><span class="cat-txt" style="color:${catColor(s.fltCat)}">${s.fltCat||"?"}</span><span class="raw"> - ${highlightRaw(s.rawOb, catColor(s.fltCat))}</span></div>`
       : decodedGrid(s);
     card.querySelectorAll(".seg2 button").forEach(b => b.classList.toggle("on", b.dataset.m === mode));
   };
