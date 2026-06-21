@@ -110,6 +110,7 @@
       <button id="filterBtn" class="toggle" title="Filter by conditions">All</button>
       <button id="radarBtn" class="toggle" title="Toggle weather radar">☔ Radar</button>
       <button id="refreshBtn" class="toggle" title="Refresh">↻</button>
+      <button id="skipBtn" class="toggle on" title="Skip the intro" style="display:none">Skip ▸</button>
     </div>
   </header>
 
@@ -251,7 +252,10 @@ async function geocode(idRaw){
 const map = L.map("map", {zoomControl:true, attributionControl:false}).setView([39.5,-98.35], 4);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {maxZoom:18}).addTo(map);
 let layer = L.layerGroup().addTo(map);
+let introLayer = L.layerGroup().addTo(map);
 let circle = null, youMarker = null;
+let introDone = false, locValue = null;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function stationIcon(s){
   return L.divIcon({className:"",
@@ -345,7 +349,13 @@ async function load(c){
   }
 }
 
+function cancelIntro(){
+  introDone = true;
+  introLayer.clearLayers();
+  const b = $("skipBtn"); if (b) b.style.display = "none";
+}
 function useMyLocation(){
+  cancelIntro();
   setStatus("Getting your location…");
   if (!navigator.geolocation){ setStatus("Location not available — search an airport.", true); return; }
   navigator.geolocation.getCurrentPosition(
@@ -353,6 +363,53 @@ function useMyLocation(){
     () => setStatus("Location denied — search an airport above.", true),
     {enableHighAccuracy:true, timeout:10000}
   );
+}
+
+// ---- opening intro: USA → your region → local 50nm ----------------------
+function getLocation(){
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error("no geolocation"));
+    navigator.geolocation.getCurrentPosition(
+      p => res({lat:p.coords.latitude, lon:p.coords.longitude, name:"My location"}),
+      () => rej(new Error("denied")),
+      {enableHighAccuracy:true, timeout:10000}
+    );
+  });
+}
+async function showNational(){
+  map.setView([39.5, -98.35], 4);
+  try{
+    const m = await getJson(`${API}/metar?bbox=24,-125,49,-66&format=json`);
+    if (introDone) return;
+    introLayer.clearLayers();
+    for (const s of m){
+      if (s.lat == null) continue;
+      L.circleMarker([s.lat, s.lon],
+        {radius:3, stroke:false, fillColor:catColor(s.fltCat), fillOpacity:.85}).addTo(introLayer);
+    }
+  }catch(e){ /* national splash is optional */ }
+}
+async function startup(){
+  const skip = $("skipBtn"); if (skip) skip.style.display = "";
+  setStatus("Weather across the U.S. — finding you…");
+  const locP = getLocation().then(l => { locValue = l; return l; }).catch(() => null);
+  await showNational();
+  await sleep(5000);
+  if (introDone) return;
+  const loc = await locP;
+  if (!loc){ cancelIntro(); setStatus("Turn on location, or search an airport above.", true); return; }
+  if (introDone) return;
+  setStatus("Zooming to your region…");
+  map.flyTo([loc.lat, loc.lon], 7, {duration:1.6});
+  await sleep(5000);
+  if (introDone) return;
+  cancelIntro();
+  await load(loc);
+}
+function skipIntro(){
+  if (introDone) return;
+  cancelIntro();
+  if (locValue) load(locValue); else useMyLocation();
 }
 
 // ---- radar overlay (RainViewer) ----------------------------------------
@@ -371,9 +428,11 @@ async function toggleRadar(){
 
 // ---- events -------------------------------------------------------------
 $("go").addEventListener("click", async () => {
+  cancelIntro();
   try{ setStatus("Searching…"); await load(await geocode($("q").value)); }
   catch(e){ setStatus(e.message, true); }
 });
+$("skipBtn").addEventListener("click", skipIntro);
 $("q").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
 $("gps").addEventListener("click", useMyLocation);
 $("tip").addEventListener("click", () => window.open(TIP_URL, "_blank", "noopener"));
@@ -397,8 +456,8 @@ $("filterBtn").addEventListener("click", () => {
 // PWA service worker
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 
-// go
-useMyLocation();
+// go — run the opening intro (USA → your region → local)
+startup();
 </script>
 </body>
 </html>
