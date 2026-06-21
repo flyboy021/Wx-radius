@@ -102,6 +102,7 @@
     color:#cdd6e0;white-space:pre-wrap;word-break:break-word;line-height:1.45}
   .raw-id{font-weight:800}
   .raw-time{color:#ff9f1c;font-weight:800}
+  .age{color:#9aa7b5;font-size:12px;margin:1px 0 4px}
   .metar-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
   .metar-head .raw-id{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
   .cat-txt{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;font-weight:800}
@@ -222,9 +223,18 @@
       <button id="timeWarnOk" class="modal-btn">I understand</button>
     </div>
   </div>
+
+  <div id="zoneWarn" class="modal" style="display:none">
+    <div class="modal-box">
+      <div class="modal-title">⚠ Different time zone</div>
+      <div class="modal-msg" id="zoneWarnMsg"></div>
+      <button id="zoneWarnOk" class="modal-btn">Got it</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tz-lookup/tz.js"></script>
 <script>
 // ---- CONFIG -------------------------------------------------------------
 // Put your tip-jar link here (Stripe Payment Link / Ko-fi / Buy Me a Coffee).
@@ -244,6 +254,10 @@ let scope = "local";    // "local" (25/50/100nm) or "region"
 let metarMode = "raw";  // "raw" or "plain" — global for all stations
 let timeMode = "z";     // "z" (Zulu) or "local" — affects displayed times
 let lastUpdate = null;
+const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const warnedZones = new Set();
+let gpsOk = false;      // do we have a real GPS fix?
+let headerTz = null;    // null = device tz; otherwise the looked-up airport's tz
 
 // ---- geo helpers --------------------------------------------------------
 const toRad = d => d * Math.PI / 180;
@@ -281,7 +295,7 @@ function fmtTemp(s){ return s.temp != null ? `${Math.round(s.temp)}°C / dew ${M
 
 function decodedGrid(s){
   const rows = [
-    ["Time", s.obsTime ? hmStr(new Date(s.obsTime*1000)) : "—"],
+    ["Time", s.obsTime ? hmStr(new Date(s.obsTime*1000), tzOf(s.lat, s.lon)) : "—"],
     ["Wind", fmtWind(s)],
     ["Visibility", fmtVis(s)],
     ["Sky", fmtClouds(s)],
@@ -297,18 +311,25 @@ function summaryLine(s){
 // Show the raw observation and highlight its leading "METAR KXXX" / "SPECI KXXX".
 function ord(n){ const v = n % 100; if (v >= 11 && v <= 13) return n + "th";
   return n + ({1:"st", 2:"nd", 3:"rd"}[n % 10] || "th"); }
-function localStamp(epoch){
-  const d = new Date(epoch * 1000), p = n => String(n).padStart(2,"0");
-  const tz = (d.toLocaleTimeString([], {hour12:false, timeZoneName:"short"}).split(" ").pop()) || "";
-  return `${ord(d.getDate())} ${p(d.getHours())}${p(d.getMinutes())}${tz}`;
+function tzOf(lat, lon){
+  try { return (typeof tzlookup === "function" && lat != null) ? tzlookup(lat, lon) : null; }
+  catch(e){ return null; }
 }
-function highlightRaw(raw, col, obsTime){
+function stampFor(d, tz){
+  const o = {day:"numeric", hour:"2-digit", minute:"2-digit", hour12:false, timeZoneName:"short"};
+  if (tz) o.timeZone = tz;
+  const parts = new Intl.DateTimeFormat([], o).formatToParts(d);
+  const g = t => (parts.find(p => p.type === t) || {}).value || "";
+  return `${ord(+g("day"))} ${g("hour").padStart(2,"0")}${g("minute").padStart(2,"0")}${g("timeZoneName")}`;
+}
+function localStamp(epoch, tz){ return stampFor(new Date(epoch * 1000), tz); }
+function highlightRaw(raw, col, obsTime, tz){
   if (!raw) return "";
   let html = raw.replace(/^(METAR|SPECI)\s+(\S+)/,
     col ? `<span class="raw-id" style="color:${col}">$1 $2</span>` : `<span class="raw-id">$1 $2</span>`);
   // Convert the obs timestamp (e.g. 212058Z) to local when in local time mode.
   html = html.replace(/\b\d{6}Z\b/, (m) =>
-    (timeMode === "local" && obsTime) ? `<span class="raw-time">${localStamp(obsTime)}</span>` : m);
+    (timeMode === "local" && obsTime) ? `<span class="raw-time">${localStamp(obsTime, tz)}</span>` : m);
   return html;
 }
 // Break a raw TAF into readable forecast lines.
@@ -338,12 +359,26 @@ function catFromVisCeil(vis, ceil){
   if (c <= 3000 || v <= 5) return "MVFR";
   return "VFR";
 }
-function tafHtml(raw, pillLeft){
+function tafLocal(dd, hh, mm, ref, tz){
+  const r = new Date(ref * 1000);
+  let mo = r.getUTCMonth();
+  if (dd < r.getUTCDate() - 5) mo += 1;          // token rolled into next month
+  return stampFor(new Date(Date.UTC(r.getUTCFullYear(), mo, dd, hh, mm)), tz);
+}
+function convertTafTimes(line, ref, tz){
+  if (timeMode !== "local" || !isFinite(ref)) return line;
+  return line
+    .replace(/\b(\d{2})(\d{2})(\d{2})Z\b/, (m,dd,hh,mm) => `<span class="raw-time">${tafLocal(+dd,+hh,+mm,ref,tz)}</span>`)
+    .replace(/\bFM(\d{2})(\d{2})(\d{2})\b/, (m,dd,hh,mm) => `FM <span class="raw-time">${tafLocal(+dd,+hh,+mm,ref,tz)}</span>`)
+    .replace(/\b(\d{2})(\d{2})\/(\d{2})(\d{2})\b/, (m,d1,h1,d2,h2) =>
+      `<span class="raw-time">${tafLocal(+d1,+h1,0,ref,tz)}</span>/<span class="raw-time">${tafLocal(+d2,+h2,0,ref,tz)}</span>`);
+}
+function tafHtml(raw, pillLeft, ref, tz){
   if (!raw) return "";
   const lines = raw.replace(/\s+(FM\d{6}|BECMG|TEMPO|PROB\d{2})/g, "\n$1").trim().split("\n");
   return lines.map(ln => {
     const cat = catFromVisCeil(parseVisSM(ln), parseCeil(ln));
-    const txt = `<span class="taf-txt">${ln}</span>`;
+    const txt = `<span class="taf-txt">${convertTafTimes(ln, ref, tz)}</span>`;
     if (cat){
       const col = catColor(cat);
       const pill = `<span class="taf-pill" style="background:${col}">${cat}</span>`;
@@ -358,13 +393,13 @@ function tafHtml(raw, pillLeft){
 }
 
 // ---- TAF plain-English decoding (from structured forecast periods) ------
-function tafTime(epoch){ return hmStr(new Date(epoch * 1000)); }
-function fcstPrefix(f, first){
-  const from = tafTime(f.timeFrom);
+function tafTime(epoch, tz){ return hmStr(new Date(epoch * 1000), tz); }
+function fcstPrefix(f, first, tz){
+  const from = tafTime(f.timeFrom, tz);
   if (first) return `From ${from}`;
-  if (f.fcstChange === "BECMG") return `Becoming ${from}–${tafTime(f.timeTo)}`;
-  if (f.fcstChange === "TEMPO") return `Temporary ${from}–${tafTime(f.timeTo)}`;
-  if (f.probability) return `${f.probability}% chance ${from}–${tafTime(f.timeTo)}`;
+  if (f.fcstChange === "BECMG") return `Becoming ${from}–${tafTime(f.timeTo, tz)}`;
+  if (f.fcstChange === "TEMPO") return `Temporary ${from}–${tafTime(f.timeTo, tz)}`;
+  if (f.probability) return `${f.probability}% chance ${from}–${tafTime(f.timeTo, tz)}`;
   return `From ${from}`;
 }
 function fcstWind(f){
@@ -413,11 +448,11 @@ function fcstCat(f){
   if (f.visib != null){ const v = String(f.visib); vis = v.includes("+") ? 6.01 : parseFloat(v); if (isNaN(vis)) vis = null; }
   return catFromVisCeil(vis, ceil);
 }
-function tafDecodedHtml(t, pillLeft){
+function tafDecodedHtml(t, pillLeft, tz){
   if (!t || !t.fcsts || !t.fcsts.length) return tafHtml(t && t.rawTAF, pillLeft);
   return t.fcsts.map((f, i) => {
     const bits = [fcstWind(f), fcstVis(f), decodeWx(f.wxString), fcstClouds(f)].filter(Boolean);
-    const txt = `${fcstPrefix(f, i === 0)}: ${bits.join(", ")}`;
+    const txt = `${fcstPrefix(f, i === 0, tz)}: ${bits.join(", ")}`;
     const cat = fcstCat(f);
     if (cat){
       const col = catColor(cat);
@@ -434,7 +469,20 @@ function tafDecodedHtml(t, pillLeft){
 }
 function tafBlock(t, pillLeft){
   if (!t) return "";
-  return metarMode === "raw" ? tafHtml(t.rawTAF, pillLeft) : tafDecodedHtml(t, pillLeft);
+  const ref = (t.fcsts && t.fcsts[0]) ? t.fcsts[0].timeFrom : null;
+  const tz = tzOf(t.lat, t.lon);
+  return metarMode === "raw" ? tafHtml(t.rawTAF, pillLeft, ref, tz) : tafDecodedHtml(t, pillLeft, tz);
+}
+function tafIssuedMs(t){
+  if (!t) return null;
+  for (const k of ["issueTime", "bulletinTime"]){
+    if (t[k]){ const ms = Date.parse(t[k]); if (!isNaN(ms)) return ms; }
+  }
+  return t.validTimeFrom ? t.validTimeFrom * 1000 : null;
+}
+function tafAgeLine(t){
+  const ms = tafIssuedMs(t);
+  return ms ? `<div class="age">TAF issued ${agoStr(ms)}</div>` : "";
 }
 
 // ---- ATIS (digital ATIS, available only at larger towered airports) -----
@@ -585,7 +633,7 @@ function drawBase(){
 function rawLineHtml(s, pillLeft){
   const col = catColor(s.fltCat);
   const pill = `<span class="taf-pill" style="background:${col}">${s.fltCat||"?"}</span>`;
-  const raw = `<span class="raw">${highlightRaw(s.rawOb, col, s.obsTime)}</span>`;
+  const raw = `<span class="raw">${highlightRaw(s.rawOb, col, s.obsTime, tzOf(s.lat, s.lon))}</span>`;
   return `<div class="rawline">${pillLeft ? pill + raw : raw + pill}</div>`;
 }
 // Decode the METAR remarks (everything after RMK) into plain English.
@@ -624,8 +672,15 @@ function decodeRemarks(raw){
   }
   return out.length ? out : null;
 }
+function agoStr(ms){
+  const mins = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return `${h} hour${h === 1 ? "" : "s"}${m ? ` ${m} minute${m === 1 ? "" : "s"}` : ""} ago`;
+}
 function metarBoxHtml(s, pillLeft){
-  if (metarMode === "raw") return rawLineHtml(s, pillLeft);
+  const age = s.obsTime ? `<div class="age">METAR reported ${agoStr(s.obsTime * 1000)}</div>` : "";
+  if (metarMode === "raw") return age + rawLineHtml(s, pillLeft);
   const col = catColor(s.fltCat);
   const id = `<span class="raw-id" style="color:${col}">${s.icaoId} METAR</span>`;
   const pill = `<span class="taf-pill" style="background:${col}">${s.fltCat||"?"}</span>`;
@@ -634,7 +689,7 @@ function metarBoxHtml(s, pillLeft){
   const rmkHtml = rmk
     ? `<div class="rmk"><div class="rmk-h">Remarks</div>${rmk.map(r => `<div class="rmk-item">${r}</div>`).join("")}</div>`
     : "";
-  return header + decodedGrid(s) + rmkHtml;
+  return age + header + decodedGrid(s) + rmkHtml;
 }
 function popupEl(s){
   const el = document.createElement("div");
@@ -644,7 +699,7 @@ function popupEl(s){
     <div class="pop-h"><span class="pop-id">${s.icaoId}</span></div>
     <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm away</div>
     <div class="metarbox">${metarBoxHtml(s, false)}</div>
-    ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafBlock(s.taf, false)}</div></div>` : ""}
+    ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span>${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, false)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
   wireAtis(el.querySelector(".atisBtn"), el.querySelector(".atis-slot"), atisFor(s.icaoId));
   return el;
@@ -686,7 +741,7 @@ function cardEl(s){
   if (tafBtn) tafBtn.addEventListener("click", () => {
     if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; tafBtn.textContent="Forecast (TAF) ▾"; return; }
     slot.dataset.open = "1"; tafBtn.textContent = "Hide forecast ▴";
-    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span><div class="taf">${tafBlock(s.taf, true)}</div></div>`;
+    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span>${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, true)}</div></div>`;
   });
   wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"), atisFor(s.icaoId));
   return card;
@@ -730,10 +785,27 @@ function updateFavicon(cat){
   if (link) link.href = cv.toDataURL("image/png");
 }
 
+function zoneAbbr(tz){
+  try { return new Intl.DateTimeFormat([], {timeZone:tz, timeZoneName:"short"})
+    .formatToParts(new Date()).find(p => p.type === "timeZoneName").value; }
+  catch(e){ return tz; }
+}
+// Warn once when viewing an area whose time zone differs from the user's.
+function maybeWarnZone(lat, lon){
+  const tz = tzOf(lat, lon);
+  if (!tz || tz === deviceTz || warnedZones.has(tz)) return;
+  warnedZones.add(tz);
+  $("zoneWarnMsg").innerHTML = `This area is in a <b>different time zone (${zoneAbbr(tz)})</b> than where you are. ` +
+    `Its local times are shown in that zone — pay close attention to the time zone on each time.`;
+  $("zoneWarn").style.display = "flex";
+}
 async function load(c, opts){
   if (!c) return;
   opts = opts || {};
   center = c;
+  maybeWarnZone(c.lat, c.lon);
+  headerTz = gpsOk ? null : tzOf(c.lat, c.lon);   // no GPS → header uses the airport's zone
+  tickZulu();
   const region = scope === "region";
   $("where").textContent = region ? regionName(c) : `${c.name} · ${radiusNm} nm`;
   if (!opts.preStations) setStatus("Loading weather…");
@@ -785,7 +857,7 @@ function useMyLocation(){
   setStatus("Getting your location…");
   if (!navigator.geolocation){ setStatus("Location not available — search an airport.", true); return; }
   navigator.geolocation.getCurrentPosition(
-    p => load({lat:p.coords.latitude, lon:p.coords.longitude, name:"My location"}),
+    p => { gpsOk = true; load({lat:p.coords.latitude, lon:p.coords.longitude, name:"My location"}); },
     () => setStatus("Location denied — search an airport above.", true),
     {enableHighAccuracy:true, timeout:10000}
   );
@@ -844,6 +916,7 @@ async function startup(){
   const skip = $("skipBtn"); if (skip) skip.style.display = "";
   setStatus("Finding your location…");
   const loc = await getLocation().catch(() => null);
+  if (loc) gpsOk = true;
   if (introDone) return;
 
   if (!loc){
@@ -983,16 +1056,17 @@ $("modeBtn").addEventListener("click", () => {
 
 // header clock — tap to switch all displayed times between Zulu and local
 function clockStr(d){
-  const p = n => String(n).padStart(2,"0");
-  return timeMode === "z"
-    ? `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}Z`
-    : d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false, timeZoneName:"short"});
+  // Header shows the user's own local time; with no GPS, the looked-up airport's zone.
+  const o = {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false, timeZoneName:"short"};
+  if (headerTz) o.timeZone = headerTz;
+  return d.toLocaleTimeString([], o);
 }
-function hmStr(d){
+function hmStr(d, tz){
   const p = n => String(n).padStart(2,"0");
-  return timeMode === "z"
-    ? `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}Z`
-    : d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", hour12:false, timeZoneName:"short"});
+  if (timeMode === "z") return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}Z`;
+  const o = {hour:"2-digit", minute:"2-digit", hour12:false, timeZoneName:"short"};
+  if (tz) o.timeZone = tz;
+  return d.toLocaleTimeString([], o);
 }
 function setUpdated(){ $("updated").textContent = lastUpdate ? "as of " + hmStr(lastUpdate) : ""; }
 function tickZulu(){
@@ -1009,6 +1083,7 @@ $("zulu").addEventListener("click", () => {
   if (radarFrames.length) showRadarFrame(radarIdx);
 });
 $("timeWarnOk").addEventListener("click", () => { $("timeWarn").style.display = "none"; });
+$("zoneWarnOk").addEventListener("click", () => { $("zoneWarn").style.display = "none"; });
 
 // PWA service worker
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
