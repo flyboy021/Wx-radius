@@ -25,7 +25,8 @@
   .row1{display:flex;align-items:baseline;gap:8px}
   h1{font-size:18px;margin:0;font-weight:700;flex:none}
   #zulu{flex:1;text-align:center;font-weight:700;font-size:16px;color:#cdd6e0;
-    letter-spacing:.06em;font-variant-numeric:tabular-nums}
+    letter-spacing:.06em;font-variant-numeric:tabular-nums;cursor:pointer;user-select:none}
+  #zulu .lt{color:var(--muted);font-weight:600}
   #updated{flex:none}
   .sub{color:var(--muted);font-size:12px;margin-top:2px}
   .search{display:flex;gap:8px;margin-top:10px}
@@ -43,6 +44,7 @@
   .toggle{background:var(--panel2);color:var(--muted);border:1px solid var(--line);border-radius:8px;
     height:32px;padding:0 12px;font-size:13px;font-weight:700}
   .toggle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  #radarBtn{display:inline-flex;align-items:center;gap:5px}
   #map{flex:1;min-height:0;width:100%;background:#0a0e14}
   #list{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
   .legend{display:flex;align-items:center;gap:14px;background:var(--panel);padding:6px 12px;flex-wrap:wrap}
@@ -127,7 +129,7 @@
   <header>
     <div class="row1">
       <h1>Wx Radius</h1>
-      <span id="zulu" aria-label="Zulu time"></span>
+      <span id="zulu" aria-label="Zulu time" title="Tap to compare local time"></span>
       <span id="updated" class="sub"></span>
     </div>
     <div id="where" class="sub">Locating…</div>
@@ -153,7 +155,12 @@
         <button data-r="region">Region</button>
       </div>
       <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
-      <button id="radarBtn" class="toggle" title="Toggle weather radar">☔ Radar</button>
+      <button id="radarBtn" class="toggle" title="Toggle weather radar">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6">
+          <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/>
+          <line x1="12" y1="12" x2="12" y2="3" stroke-linecap="round"/>
+          <circle cx="16" cy="8" r="1.5" fill="currentColor" stroke="none"/>
+        </svg>Radar</button>
       <button id="skipBtn" class="toggle on" title="Skip the intro" style="display:none">Skip ▸</button>
     </div>
   </header>
@@ -756,12 +763,19 @@ $("radiusSeg").addEventListener("click", e => {
 });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
 
-// live Zulu (UTC) clock in the header
+// live Zulu (UTC) clock in the header — tap to also show local time
+let showLocal = false;
 function tickZulu(){
   const d = new Date(), p = n => String(n).padStart(2,"0");
-  $("zulu").textContent = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}Z`;
+  let html = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}Z`;
+  if (showLocal){
+    const local = d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", hour12:false, timeZoneName:"short"});
+    html += ` <span class="lt">· ${local}</span>`;
+  }
+  $("zulu").innerHTML = html;
 }
 tickZulu(); setInterval(tickZulu, 1000);
+$("zulu").addEventListener("click", () => { showLocal = !showLocal; tickZulu(); });
 
 // PWA service worker
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
