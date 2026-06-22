@@ -299,6 +299,7 @@ function fmtVis(s){ return s.visib != null ? `${s.visib} sm` : "—"; }
 function fmtAlt(s){ return s.altim != null ? `${(s.altim*0.0295299830714).toFixed(2)}" Hg` : "—"; }
 function cOrF(c){ return tempUnit === "F" ? `<span class="raw-time">${Math.round(c*9/5+32)}°F</span>` : `${Math.round(c)}°C`; }
 function fmtTemp(s){ return s.temp != null ? `${cOrF(s.temp)} <b>Dew</b> ${cOrF(s.dewp)}` : "—"; }
+function cToF(tok){ const v = tok[0] === "M" ? -parseInt(tok.slice(1),10) : parseInt(tok,10); return Math.round(v*9/5+32); }
 
 function decodedGrid(s){
   const rows = [
@@ -337,6 +338,8 @@ function highlightRaw(raw, col, obsTime, tz){
   // Convert the obs timestamp (e.g. 212058Z) to local when in local time mode.
   html = html.replace(/\b\d{6}Z\b/, (m) =>
     (timeMode === "local" && obsTime) ? `<span class="raw-time">${localStamp(obsTime, tz)}</span>` : m);
+  if (tempUnit === "F")
+    html = html.replace(/\b(M?\d{2})\/(M?\d{2})\b/, (m,t,d) => `<span class="raw-time">${cToF(t)}/${cToF(d)}°F</span>`);
   return html;
 }
 // Break a raw TAF into readable forecast lines.
