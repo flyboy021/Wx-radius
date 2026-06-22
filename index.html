@@ -124,10 +124,15 @@
   .rawline{margin-top:2px;display:flex;align-items:flex-start;gap:8px}
   .taf-wrap{margin-top:9px;border-top:1px solid var(--line);padding-top:9px}
   .taf-id{margin-bottom:3px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
+  .now-remain{position:absolute;left:-3px;bottom:0;width:3px;background:#0d1117b3}
+  .now-tick{position:absolute;left:-3px;width:12px;height:2px;background:#fff;box-shadow:0 0 0 1px #000;transform:translateY(-1px)}
+  .now-tag{display:inline-block;background:#fff;color:#0d1117;font-size:9px;font-weight:800;
+    letter-spacing:.04em;padding:0 4px;border-radius:3px;margin-top:1px;flex:none}
   .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#9fd6ff;
     white-space:pre-wrap;word-break:break-word;margin-top:2px;line-height:1.45}
   .taf-line{display:flex;align-items:flex-start;gap:8px;border-left:3px solid transparent;
-    padding:3px 0 3px 8px;margin-top:2px}
+    padding:3px 0 3px 8px;margin-top:2px;position:relative}
+  .taf-line.now-line{background:#ffffff10}
   .taf-txt{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;
     line-height:1.5;color:#9fd6ff;white-space:pre-wrap;word-break:break-word}
   .taf-pill{flex:none;color:#fff;font-size:11px;font-weight:800;padding:1px 7px;
@@ -432,7 +437,7 @@ function convertTafTimes(line, ref, tz){
     .replace(/\b(\d{2})(\d{2})\/(\d{2})(\d{2})\b/, (m,d1,h1,d2,h2) =>
       `<span class="raw-time">${tafLocal(+d1,+h1,0,ref,tz)}</span>/<span class="raw-time">${tafLocal(+d2,+h2,0,ref,tz)}</span>`);
 }
-function tafHtml(raw, pillLeft, ref, tz){
+function tafHtml(raw, pillLeft, ref, tz, nowIdx, frac){
   if (!raw) return "";
   const lines = raw.replace(/\s+(FM\d{6}|BECMG|TEMPO|PROB\d{2})/g, "\n$1").trim().split("\n");
   return lines.map((ln, idx) => {
@@ -440,16 +445,20 @@ function tafHtml(raw, pillLeft, ref, tz){
     let shown = convertTafTimes(ln, ref, tz);
     if (idx === 0) shown = shown.replace(/^(TAF(?:\s+(?:AMD|COR))?\s+\S+)/, '<span class="raw-id" style="color:#fff">$1</span>');
     const txt = `<span class="taf-txt">${shown}</span>`;
+    const isNow = idx === nowIdx;
+    const ov = isNow ? nowOverlay(frac) : "";
+    const now = isNow ? `<span class="now-tag">NOW</span>` : "";
+    const nc = isNow ? " now-line" : "";
     if (cat){
       const col = catColor(cat);
       const pill = `<span class="taf-pill" style="background:${col}">${cat}</span>`;
       return pillLeft
-        ? `<div class="taf-line pill-left" style="border-left-color:${col}">${pill}${txt}</div>`
-        : `<div class="taf-line" style="border-left-color:${col}">${txt}${pill}</div>`;
+        ? `<div class="taf-line pill-left${nc}" style="border-left-color:${col}">${ov}${now}${pill}${txt}</div>`
+        : `<div class="taf-line${nc}" style="border-left-color:${col}">${ov}${now}${txt}${pill}</div>`;
     }
     return pillLeft
-      ? `<div class="taf-line pill-left"><span class="taf-pill ghost"></span>${txt}</div>`
-      : `<div class="taf-line">${txt}</div>`;
+      ? `<div class="taf-line pill-left${nc}">${ov}<span class="taf-pill ghost"></span>${now}${txt}</div>`
+      : `<div class="taf-line${nc}">${ov}${now}${txt}</div>`;
   }).join("");
 }
 
@@ -510,31 +519,57 @@ function fcstCat(f){
   if (f.visib != null){ const v = String(f.visib); vis = v.includes("+") ? 6.01 : parseFloat(v); if (isNaN(vis)) vis = null; }
   return catFromVisCeil(vis, ceil);
 }
-function tafDecodedHtml(t, pillLeft, tz){
+function tafDecodedHtml(t, pillLeft, tz, nowIdx, frac){
   if (!t || !t.fcsts || !t.fcsts.length) return tafHtml(t && t.rawTAF, pillLeft);
   const head = `<div class="taf-id"><span class="raw-id" style="color:#fff">${t.icaoId} TAF</span></div>`;
   return head + t.fcsts.map((f, i) => {
     const bits = [fcstWind(f), fcstVis(f), decodeWx(f.wxString), fcstClouds(f)].filter(Boolean);
     const txt = `${fcstPrefix(f, i === 0, tz)}: ${bits.join(", ")}`;
     const cat = fcstCat(f);
+    const isNow = i === nowIdx;
+    const ov = isNow ? nowOverlay(frac) : "";
+    const now = isNow ? `<span class="now-tag">NOW</span>` : "";
+    const nc = isNow ? " now-line" : "";
     if (cat){
       const col = catColor(cat);
       const pill = `<span class="taf-pill" style="background:${col}">${cat}</span>`;
       const t2 = `<span class="taf-txt">${txt}</span>`;
       return pillLeft
-        ? `<div class="taf-line pill-left" style="border-left-color:${col}">${pill}${t2}</div>`
-        : `<div class="taf-line" style="border-left-color:${col}">${t2}${pill}</div>`;
+        ? `<div class="taf-line pill-left${nc}" style="border-left-color:${col}">${ov}${now}${pill}${t2}</div>`
+        : `<div class="taf-line${nc}" style="border-left-color:${col}">${ov}${now}${t2}${pill}</div>`;
     }
     return pillLeft
-      ? `<div class="taf-line pill-left"><span class="taf-pill ghost"></span><span class="taf-txt">${txt}</span></div>`
-      : `<div class="taf-line"><span class="taf-txt">${txt}</span></div>`;
+      ? `<div class="taf-line pill-left${nc}">${ov}<span class="taf-pill ghost"></span>${now}<span class="taf-txt">${txt}</span></div>`
+      : `<div class="taf-line${nc}">${ov}${now}<span class="taf-txt">${txt}</span></div>`;
   }).join("");
+}
+function currentFcstIdx(t){
+  if (!t || !t.fcsts) return -1;
+  const now = Date.now() / 1000;
+  let idx = -1;
+  t.fcsts.forEach((f, i) => {
+    if (f.fcstChange !== "TEMPO" && !f.probability && f.timeFrom != null && f.timeTo != null
+      && now >= f.timeFrom && now < f.timeTo) idx = i;
+  });
+  return idx;
+}
+// progress overlay drawn on the current period's color stripe: elapsed = bright, remaining = dimmed
+function nowOverlay(frac){
+  const pct = (frac * 100).toFixed(1);
+  const rem = (100 - frac * 100).toFixed(1);
+  return `<span class="now-remain" style="height:${rem}%"></span><span class="now-tick" style="top:${pct}%"></span>`;
 }
 function tafBlock(t, pillLeft){
   if (!t) return "";
   const ref = (t.fcsts && t.fcsts[0]) ? t.fcsts[0].timeFrom : null;
   const tz = tzOf(t.lat, t.lon);
-  return metarMode === "raw" ? tafHtml(t.rawTAF, pillLeft, ref, tz) : tafDecodedHtml(t, pillLeft, tz);
+  const nowIdx = currentFcstIdx(t);
+  let frac = 0;
+  if (nowIdx >= 0){
+    const f = t.fcsts[nowIdx];
+    frac = Math.max(0, Math.min(1, (Date.now() / 1000 - f.timeFrom) / (f.timeTo - f.timeFrom)));
+  }
+  return metarMode === "raw" ? tafHtml(t.rawTAF, pillLeft, ref, tz, nowIdx, frac) : tafDecodedHtml(t, pillLeft, tz, nowIdx, frac);
 }
 function tafIssuedMs(t){
   if (!t) return null;
@@ -785,14 +820,15 @@ function decodeRemarks(raw){
     else if (/^LTG[A-Z]*$/.test(t)){
       const type = rmkLtgType(t.slice(3));
       const mods = [];
-      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|AND|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
+      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|AND|-|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
       const where = []; let prev = "";
       for (const md of mods){
         if (md === "DSNT") where.push("distant");
         else if (md === "VC") where.push("in the vicinity");
         else if (md === "OHD") where.push("overhead");
         else if (md === "AND") where.push("and");
-        else where.push(prev === "AND" ? rmkDir(md) : "to the " + rmkDir(md));
+        else if (md === "-") where.push("through");
+        else where.push((prev === "AND" || prev === "-") ? rmkDir(md) : "to the " + rmkDir(md));
         prev = md;
       }
       out.push("Lightning" + (type ? ` (${type})` : "") + (where.length ? " " + where.join(" ") : ""));
@@ -800,8 +836,8 @@ function decodeRemarks(raw){
     else if (t === "TORNADO" || t === "WATERSPOUT" || t === "FUNNEL"){
       let name = t === "FUNNEL" ? "Funnel cloud" : t.charAt(0) + t.slice(1).toLowerCase();
       if (t === "FUNNEL" && toks[i+1] === "CLOUD") i++;
-      const extra = [];
-      while (i+1 < toks.length && /^(B\d{2,4}|E\d{2,4}|DSNT|VC|OHD|AND|MOV|ALQDS|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])){
+      const extra = []; let prev = "";
+      while (i+1 < toks.length && /^(B\d{2,4}|E\d{2,4}|DSNT|VC|OHD|AND|MOV|ALQDS|-|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])){
         const md = toks[++i];
         if (/^B\d/.test(md)) extra.push("began " + (md.length > 3 ? md.slice(1,3)+":"+md.slice(3) : ":"+md.slice(1)));
         else if (/^E\d/.test(md)) extra.push("ended " + (md.length > 3 ? md.slice(1,3)+":"+md.slice(3) : ":"+md.slice(1)));
@@ -810,14 +846,16 @@ function decodeRemarks(raw){
         else if (md === "OHD") extra.push("overhead");
         else if (md === "AND") extra.push("and");
         else if (md === "MOV") extra.push("moving");
-        else extra.push("to the " + rmkDir(md));
+        else if (md === "-") extra.push("through");
+        else extra.push((prev === "AND" || prev === "MOV" || prev === "-") ? rmkDir(md) : "to the " + rmkDir(md));
+        prev = md;
       }
       out.push(name + (extra.length ? " " + extra.join(" ") : ""));
     }
     else if (t === "CB" || t === "TCU" || t === "ACC"){
       const name = t === "CB" ? "Cumulonimbus" : t === "TCU" ? "Towering cumulus" : "Altocumulus castellanus";
       const mods = [];
-      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|AND|MOV|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
+      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|AND|MOV|-|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
       const where = []; let prev = "";
       for (const md of mods){
         if (md === "DSNT") where.push("distant");
@@ -825,7 +863,8 @@ function decodeRemarks(raw){
         else if (md === "OHD") where.push("overhead");
         else if (md === "AND") where.push("and");
         else if (md === "MOV") where.push("moving");
-        else where.push((prev === "AND" || prev === "MOV") ? rmkDir(md) : "to the " + rmkDir(md));
+        else if (md === "-") where.push("through");
+        else where.push((prev === "AND" || prev === "MOV" || prev === "-") ? rmkDir(md) : "to the " + rmkDir(md));
         prev = md;
       }
       out.push(name + (where.length ? " " + where.join(" ") : ""));
