@@ -870,6 +870,11 @@ async function load(c, opts){
     drawBase();
     if (region){
       map.fitBounds(boxToBounds(regionBox(c)), {padding:[20,20]});
+    } else if (circle){
+      // fit to the radius ring so the full blue circle stays in view
+      const b = circle.getBounds();
+      if (opts.animate) map.flyToBounds(b, {padding:[18,18], maxZoom:13, duration:1.4});
+      else map.fitBounds(b, {padding:[18,18], maxZoom:13});
     } else {
       const z = ZOOM_FOR[radiusNm] || DEFAULT_ZOOM;
       if (opts.animate) map.flyTo([c.lat, c.lon], z, {duration:1.4});
@@ -988,7 +993,7 @@ async function startup(){
   // Preload the local 50nm data (and, for U.S., the 225nm region) during the 5s hold.
   const localP = Promise.all([ fetchWx(loc.lat, loc.lon), loadAtisAll() ]);
   const regionalP = conus ? fetchMetarsBox(loc.lat, loc.lon, 225) : null;
-  await sleep(5000);
+  await sleep(4000);
   if (introDone) return;
 
   // ---- Phase 2 (U.S. only): 225nm region ----
@@ -998,7 +1003,7 @@ async function startup(){
     drawDots(regional, 4);
     setStatus("Zooming to your region…");
     map.flyTo([loc.lat, loc.lon], 7, {duration:1.6});
-    await sleep(5000);
+    await sleep(4000);
     if (introDone) return;
   } else {
     setStatus("Zooming in…");
