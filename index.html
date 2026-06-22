@@ -259,6 +259,7 @@ let timeMode = "z";     // "z" (Zulu) or "local" — affects displayed times
 let lastUpdate = null;
 const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const warnedZones = new Set();
+const canHover = !!(window.matchMedia && window.matchMedia("(hover: hover)").matches);
 let gpsOk = false;      // do we have a real GPS fix?
 let headerTz = null;    // null = device tz; otherwise the looked-up airport's tz
 
@@ -629,7 +630,7 @@ function drawBase(){
   } else {
     youMarker.bindPopup(center.name === "My location" ? "You are here" : center.name);
   }
-  youMarker.on("mouseover", () => youMarker.openPopup());
+  if (canHover) youMarker.on("mouseover", () => youMarker.openPopup());
 }
 
 // Raw or decoded METAR box, controlled globally by metarMode.
@@ -741,7 +742,7 @@ function renderStations(){
   for (const s of arr){
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
     m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true});
-    m.on("mouseover", () => m.openPopup());   // hover on desktop; tap on mobile
+    if (canHover) m.on("mouseover", () => m.openPopup());   // hover on desktop; single tap on touch
   }
 }
 
