@@ -264,6 +264,8 @@ const API = (PROXY_BASE || "") + "/api/data";
 let radiusNm = 50;
 let center = null;
 let lastStations = [];
+let openStationId = null;     // icao of the station whose popup is currently open
+let markersByIcao = {};
 let scope = "local";    // "local" (25/50/100nm) or "region"
 let metarMode = "raw";  // "raw" or "plain" — global for all stations
 let tempUnit = "C";     // "C" or "F" for decoded temp/dewpoint
@@ -641,6 +643,7 @@ function drawBase(){
   const near = lastStations[0];
   if (scope !== "region" && near && near.dist <= 5){
     // a reporting station sits under the "you" marker — let it open that station's details
+    youMarker._icao = near.icaoId;
     youMarker.bindPopup(popupEl(near), {maxWidth:330, minWidth:250,
       maxHeight:Math.max(180, Math.round(map.getSize().y * 0.72)), autoPan:true, keepInView:true});
   } else {
@@ -748,6 +751,7 @@ function popupEl(s){
 
 function renderStations(){
   layer.clearLayers();
+  markersByIcao = {};
   const arr = visibleStations();
   if (!arr.length){
     setStatus(lastStations.length ? "No stations match this filter." : `No reporting stations within ${radiusNm}nm.`);
@@ -757,6 +761,7 @@ function renderStations(){
   const maxH = Math.max(180, Math.round(map.getSize().y * 0.72));
   for (const s of arr){
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
+    m._icao = s.icaoId; markersByIcao[s.icaoId] = m;
     m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true});
     if (canHover) m.on("mouseover", () => m.openPopup());   // hover on desktop; single tap on touch
   }
@@ -786,6 +791,15 @@ function cardEl(s){
   });
   wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"), atisFor(s.icaoId));
   return card;
+}
+map.on("popupopen", e => { openStationId = (e.popup._source && e.popup._source._icao) || null; });
+map.on("popupclose", () => { openStationId = null; });
+// re-render everything but reopen the popup that was showing (e.g. after a Raw/Plain or °C/°F toggle)
+function rerenderKeepingPopup(){
+  const reopen = openStationId;
+  if (center) drawBase();
+  renderStations(); renderList();
+  if (reopen && markersByIcao[reopen]) markersByIcao[reopen].openPopup();
 }
 function renderList(){
   const list = $("list"); list.innerHTML = "";
@@ -833,6 +847,7 @@ function zoneAbbr(tz){
 }
 // Warn once when viewing an area whose time zone differs from the user's.
 function maybeWarnZone(lat, lon){
+  if (timeMode !== "local") return;   // only warn when you're actually viewing local time
   const tz = tzOf(lat, lon);
   if (!tz || tz === deviceTz || warnedZones.has(tz)) return;
   warnedZones.add(tz);
@@ -1097,15 +1112,13 @@ $("modeBtn").addEventListener("click", () => {
   metarMode = metarMode === "raw" ? "plain" : "raw";
   $("modeBtn").textContent = metarMode === "raw" ? "Raw" : "Plain";
   $("modeBtn").classList.toggle("on", metarMode === "plain");
-  if (center) drawBase();   // rebuild the "you are here" popup too
-  renderStations(); renderList();
+  rerenderKeepingPopup();
 });
 $("unitBtn").addEventListener("click", () => {
   tempUnit = tempUnit === "C" ? "F" : "C";
   $("unitBtn").textContent = tempUnit === "C" ? "°C" : "°F";
   $("unitBtn").classList.toggle("on", tempUnit === "F");
-  if (center) drawBase();
-  renderStations(); renderList();
+  rerenderKeepingPopup();
 });
 
 // header clock — tap to switch all displayed times between Zulu and local
@@ -1137,8 +1150,7 @@ $("zulu").addEventListener("click", () => {
   timeMode = timeMode === "z" ? "local" : "z";
   if (timeMode === "local") $("timeWarn").style.display = "flex";
   tickZulu(); setUpdated();
-  if (center) drawBase();
-  renderStations(); renderList();
+  rerenderKeepingPopup();
   if (radarFrames.length) showRadarFrame(radarIdx);
 });
 $("timeWarnOk").addEventListener("click", () => { $("timeWarn").style.display = "none"; });
