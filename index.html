@@ -861,6 +861,7 @@ async function load(c, opts){
     }
     renderStations();
     renderList();
+    setTimeout(() => map.invalidateSize(), 80);   // ensure the map fills the full height
     if (lastStations[0]) updateFavicon(lastStations[0].fltCat);
     document.title = lastStations[0]
       ? `${lastStations[0].icaoId} ${lastStations[0].fltCat} · Wx Radius`
@@ -1113,6 +1114,11 @@ $("zulu").addEventListener("click", () => {
 });
 $("timeWarnOk").addEventListener("click", () => { $("timeWarn").style.display = "none"; });
 $("zoneWarnOk").addEventListener("click", () => { $("zoneWarn").style.display = "none"; });
+
+// keep the map filling the screen as the viewport changes (toolbars, rotation)
+window.addEventListener("resize", () => map.invalidateSize());
+window.addEventListener("orientationchange", () => setTimeout(() => map.invalidateSize(), 250));
+window.addEventListener("load", () => setTimeout(() => map.invalidateSize(), 120));
 
 // PWA service worker
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
