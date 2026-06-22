@@ -92,8 +92,9 @@
     white-space:pre-wrap;word-break:break-word;margin-top:3px;line-height:1.45}
   .atis.none{color:#6b7a8d;font-style:italic;font-size:13px;margin-top:5px}
   .name{color:var(--muted);font-size:12px;margin:1px 0 5px}
-  .decoded{display:flex;flex-wrap:wrap;gap:4px 16px;margin:2px 0 7px}
-  .decoded{gap:6px 18px}
+  .decoded{display:flex;flex-direction:column;gap:4px;margin:2px 0 7px}
+  .decoded{align-items:flex-start}
+  .drow{display:flex;gap:20px;align-items:baseline}
   .decoded .d{font-size:16px;color:var(--txt)}
   .decoded .d b{color:var(--muted);font-weight:600;margin-right:6px;font-size:11px;
     text-transform:uppercase;letter-spacing:.04em}
@@ -102,6 +103,7 @@
     font-weight:700;margin-bottom:3px}
   .rmk-item{font-size:13px;color:var(--txt);line-height:1.45}
   .rmk-raw{font-family:ui-monospace,Menlo,Consolas,monospace;color:#8a97a6}
+  .decoded .d b.hot{color:#e0152b}
   .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;
     padding:1px 6px;border-radius:4px;margin-right:6px;vertical-align:middle}
   .tag.metar{background:#23406b;color:#bcd6ff}
@@ -110,6 +112,7 @@
     color:#cdd6e0;white-space:pre-wrap;word-break:break-word;line-height:1.45}
   .raw-id{font-weight:800}
   .raw-time{color:#ff9f1c;font-weight:800}
+  .windbarb{display:inline-block;vertical-align:middle;margin-right:8px;color:#cdd6e0;transform-origin:center}
   .age{color:#9aa7b5;font-size:12px;margin:1px 0 4px}
   .metar-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
   .metar-head .raw-id{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
@@ -309,22 +312,50 @@ function fmtClouds(s){
       : (COVER[c.cover]||c.cover)).join(", ");
 }
 function fmtVis(s){ return s.visib != null ? `${s.visib} sm` : "—"; }
+// Wind barb rotated to the FROM direction, with 50/10/5 kt barbs.
+function windBarb(dir, spd){
+  if (dir == null || dir === "VRB" || spd == null || spd === 0) return "";
+  let s = Math.round(spd / 5) * 5;
+  const parts = [`<line x1="12" y1="4" x2="12" y2="20"/>`];
+  let y = 4;
+  while (s >= 50){ parts.push(`<path d="M12 ${y} L19 ${(y+1.5).toFixed(1)} L12 ${(y+3).toFixed(1)} Z" fill="currentColor" stroke="none"/>`); y += 4.5; s -= 50; }
+  while (s >= 10){ parts.push(`<line x1="12" y1="${y.toFixed(1)}" x2="19.5" y2="${(y-3).toFixed(1)}"/>`); y += 3; s -= 10; }
+  if (s >= 5){ parts.push(`<line x1="12" y1="${(y+1).toFixed(1)}" x2="15.8" y2="${(y-0.5).toFixed(1)}"/>`); }
+  return `<svg class="windbarb" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="transform:rotate(${dir}deg)">${parts.join("")}</svg>`;
+}
+// Density altitude (ft) from field elevation (m), altimeter (hPa) and temp (°C).
+function densityAlt(s){
+  if (s.elev == null || s.altim == null || s.temp == null) return null;
+  const elevFt = s.elev * 3.28084;
+  const altInHg = s.altim * 0.0295299830714;
+  const pa = elevFt + (29.92 - altInHg) * 1000;          // pressure altitude
+  const isa = 15 - 1.98 * (pa / 1000);                   // ISA temp at that PA
+  return Math.round((pa + 120 * (s.temp - isa)) / 10) * 10;
+}
+// Relative humidity from temp & dewpoint (Magnus formula).
+function relHum(t, td){
+  if (t == null || td == null) return null;
+  const e = x => Math.exp((17.625 * x) / (243.04 + x));
+  return Math.round(100 * e(td) / e(t));
+}
 function fmtAlt(s){ return s.altim != null ? `${(s.altim*0.0295299830714).toFixed(2)}" Hg` : "—"; }
 function cOrF(c){ return tempUnit === "F" ? `<span class="raw-time">${Math.round(c*9/5+32)}°F</span>` : `${Math.round(c)}°C`; }
 function fmtTemp(s){ return s.temp != null ? `${cOrF(s.temp)} <b>Dew</b> ${cOrF(s.dewp)}` : "—"; }
 function cToF(tok){ const v = tok[0] === "M" ? -parseInt(tok.slice(1),10) : parseInt(tok,10); return Math.round(v*9/5+32); }
 
 function decodedGrid(s){
-  const rows = [
-    ["Time", s.obsTime ? hmStr(new Date(s.obsTime*1000), tzOf(s.lat, s.lon)) : "—"],
-    ["Wind", fmtWind(s)],
-    ["Visibility", fmtVis(s)],
-    ["Sky", fmtClouds(s)],
-    ["Temp", fmtTemp(s)],
-    ["Altimeter", fmtAlt(s)],
-  ];
-  return `<div class="decoded">${rows.map(([k,v]) =>
-    `<span class="d"><b>${k}</b>${v}</span>`).join("")}</div>`;
+  const rh = relHum(s.temp, s.dewp);
+  const da = densityAlt(s);
+  const item = (k, v, cls) => `<span class="d"><b class="${cls||""}">${k}</b>${v}</span>`;
+  return `<div class="decoded">` +
+    item("Time", s.obsTime ? hmStr(new Date(s.obsTime*1000), tzOf(s.lat, s.lon)) : "—") +
+    item("Wind", windBarb(s.wdir, s.wspd) + fmtWind(s)) +
+    item("Visibility", fmtVis(s)) +
+    item("Sky", fmtClouds(s)) +
+    `<div class="drow">${item("Temp", fmtTemp(s))}${item("RH", rh != null ? rh + "%" : "—")}</div>` +
+    item("Altimeter", fmtAlt(s)) +
+    item("Density Alt", da != null ? da.toLocaleString() + " ft" : "—", da != null && da >= 5000 ? "hot" : "") +
+    `</div>`;
 }
 function summaryLine(s){
   return `${fmtWind(s)} · ${fmtVis(s)} · ${fmtClouds(s)}`;
@@ -716,6 +747,11 @@ function decodeRemarks(raw){
     else if (t === "CIG"){
       const nx = toks[i+1] || ""; let cm;
       if ((cm = nx.match(/^(\d{3})V(\d{3})$/))){ out.push(`Ceiling variable ${(+cm[1]*100).toLocaleString()}–${(+cm[2]*100).toLocaleString()} ft`); i++; }
+    }
+    else if ((m = t.match(/^(FEW|SCT|BKN|OVC)(\d{3})$/)) && toks[i+1] === "V" && /^(FEW|SCT|BKN|OVC)$/.test(toks[i+2] || "")){
+      const cov = {FEW:"few", SCT:"scattered", BKN:"broken", OVC:"overcast"};
+      const txt = `${cov[m[1]]} ${(+m[2]*100).toLocaleString()} ft varying to ${cov[toks[i+2]]}`;
+      out.push(txt.charAt(0).toUpperCase() + txt.slice(1)); i += 2;
     }
     else if ((t === "TWR" || t === "SFC") && toks[i+1] === "VIS"){
       const label = t === "TWR" ? "Tower" : "Surface";
