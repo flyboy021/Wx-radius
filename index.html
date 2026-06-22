@@ -695,14 +695,47 @@ function decodeRemarks(raw){
     else if (t === "VISNO") out.push("Visibility sensor not operating");
     else if (t === "CHINO") out.push("Ceiling sensor not operating");
     else if (t === "RVRNO") out.push("Runway visual range missing");
+    else if (t === "VIS"){
+      const nx = toks[i+1] || ""; let vm;
+      if ((vm = nx.match(/^(\d+(?:\/\d+)?)V(\d+(?:\/\d+)?)$/))){
+        out.push(`Visibility variable ${vm[1]}–${vm[2]} sm`); i++;
+      } else if (/^[NSEW]{1,2}$/.test(nx)){
+        let val = toks[i+2] || "";
+        if (/^\d+$/.test(val) && /^\d+\/\d+$/.test(toks[i+3] || "")){ val += " " + toks[i+3]; i++; }
+        out.push(`Visibility ${val} sm to the ${rmkDir(nx)}`); i += 2;
+      }
+    }
     else if (t === "NOSIG") out.push("No significant change expected");
     else if (/^LTG[A-Z]*$/.test(t)){
       const type = rmkLtgType(t.slice(3));
       const mods = [];
-      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
-      const where = mods.map(md => md === "DSNT" ? "distant" : md === "VC" ? "in the vicinity"
-        : md === "OHD" ? "overhead" : "to the " + rmkDir(md));
+      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|AND|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
+      const where = []; let prev = "";
+      for (const md of mods){
+        if (md === "DSNT") where.push("distant");
+        else if (md === "VC") where.push("in the vicinity");
+        else if (md === "OHD") where.push("overhead");
+        else if (md === "AND") where.push("and");
+        else where.push(prev === "AND" ? rmkDir(md) : "to the " + rmkDir(md));
+        prev = md;
+      }
       out.push("Lightning" + (type ? ` (${type})` : "") + (where.length ? " " + where.join(" ") : ""));
+    }
+    else if (t === "CB" || t === "TCU" || t === "ACC"){
+      const name = t === "CB" ? "Cumulonimbus" : t === "TCU" ? "Towering cumulus" : "Altocumulus castellanus";
+      const mods = [];
+      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|AND|MOV|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
+      const where = []; let prev = "";
+      for (const md of mods){
+        if (md === "DSNT") where.push("distant");
+        else if (md === "VC") where.push("in the vicinity");
+        else if (md === "OHD") where.push("overhead");
+        else if (md === "AND") where.push("and");
+        else if (md === "MOV") where.push("moving");
+        else where.push((prev === "AND" || prev === "MOV") ? rmkDir(md) : "to the " + rmkDir(md));
+        prev = md;
+      }
+      out.push(name + (where.length ? " " + where.join(" ") : ""));
     }
     else if ((m = t.match(/^([+-]?[A-Z]{2,4}?)((?:[BE]\d{2,4})+)$/))){
       const wx = decodeWx(m[1]) || m[1];
@@ -726,7 +759,7 @@ function metarBoxHtml(s, pillLeft){
   const age = s.obsTime ? `<div class="age">METAR reported ${agoStr(s.obsTime * 1000)}</div>` : "";
   if (metarMode === "raw") return age + rawLineHtml(s, pillLeft);
   const col = catColor(s.fltCat);
-  const id = `<span class="raw-id" style="color:${col}">${s.icaoId} METAR</span>`;
+  const id = `<span class="raw-id" style="color:${col}">${s.icaoId} ${s.metarType || "METAR"}</span>`;
   const pill = `<span class="taf-pill" style="background:${col}">${s.fltCat||"?"}</span>`;
   const header = `<div class="metar-head">${pillLeft ? pill + id : id + pill}</div>`;
   const rmk = decodeRemarks(s.rawOb);
