@@ -39,7 +39,11 @@
   .modal-btn{background:#e0152b;color:#fff;border:0;border-radius:8px;padding:11px 20px;
     font-weight:800;font-size:14px}
   #zulu .lt{color:var(--muted);font-weight:600}
-  #updated{flex:1;text-align:right}
+  #updated{color:#9aa7b5;font-size:12px;font-weight:600}
+  .clockwrap{flex:none;display:flex;flex-direction:column;align-items:center;gap:2px}
+  #clockhint{font-size:10px;color:#ffb454;line-height:1;white-space:nowrap}
+  .spacer{flex:1}
+  .foot-left{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
   .sub{color:var(--muted);font-size:12px;margin-top:2px}
   .search{display:flex;gap:8px;margin-top:10px}
   .search input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
@@ -163,8 +167,11 @@
   <header>
     <div class="row1">
       <h1>Wx Radius</h1>
-      <span id="zulu" role="button" tabindex="0" title="Tap to switch Zulu / local time"></span>
-      <span id="updated" class="sub"></span>
+      <div class="clockwrap">
+        <span id="zulu" role="button" tabindex="0" title="Tap to switch Zulu / local time"></span>
+        <span id="clockhint"></span>
+      </div>
+      <span class="spacer"></span>
     </div>
     <div id="where" class="sub">Locating…</div>
     <div class="search">
@@ -214,8 +221,11 @@
   <div id="list" style="display:none"></div>
 
   <footer>
-    <span class="disc">Situational awareness only — not an official weather briefing.
-      Data: FAA Aviation Weather Center · Radar: RainViewer.</span>
+    <div class="foot-left">
+      <span id="updated" class="sub"></span>
+      <span class="disc">Situational awareness only — not an official weather briefing.
+        Data: FAA Aviation Weather Center · Radar: RainViewer.</span>
+    </div>
     <button id="tip" class="tip">☕ Tip the dev</button>
   </footer>
 
@@ -1115,6 +1125,7 @@ function setUpdated(){ $("updated").textContent = lastUpdate ? "as of " + hmStr(
 function tickZulu(){
   $("zulu").textContent = clockStr(new Date());
   $("zulu").classList.toggle("local-time", timeMode === "local");
+  $("clockhint").textContent = timeMode === "z" ? "▲ tap for local time" : "▲ tap for Zulu time";
 }
 tickZulu(); setInterval(tickZulu, 1000);
 $("zulu").addEventListener("click", () => {
