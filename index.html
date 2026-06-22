@@ -104,6 +104,10 @@
   .rmk-item{font-size:13px;color:var(--txt);line-height:1.45}
   .rmk-raw{font-family:ui-monospace,Menlo,Consolas,monospace;color:#8a97a6}
   .decoded .d b.hot{color:#e0152b}
+  .raw-da{margin-top:6px;font-size:14px;color:var(--txt)}
+  .raw-da b{color:var(--muted);font-weight:600;margin-right:6px;font-size:11px;
+    text-transform:uppercase;letter-spacing:.04em}
+  .raw-da b.hot{color:#e0152b}
   .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.05em;
     padding:1px 6px;border-radius:4px;margin-right:6px;vertical-align:middle}
   .tag.metar{background:#23406b;color:#bcd6ff}
@@ -118,7 +122,8 @@
   .metar-head .raw-id{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
   .cat-txt{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;font-weight:800}
   .rawline{margin-top:2px;display:flex;align-items:flex-start;gap:8px}
-  .taf-wrap{margin-top:7px}
+  .taf-wrap{margin-top:9px;border-top:1px solid var(--line);padding-top:9px}
+  .taf-id{margin-bottom:3px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
   .taf{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#9fd6ff;
     white-space:pre-wrap;word-break:break-word;margin-top:2px;line-height:1.45}
   .taf-line{display:flex;align-items:flex-start;gap:8px;border-left:3px solid transparent;
@@ -159,10 +164,10 @@
   .stn{display:flex;align-items:center;gap:3px;white-space:nowrap}
   .stn .pin{width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0006;flex:none}
   .stn .lbl{font-size:12px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 1px 2px #000}
-  .you{width:16px;height:16px;border-radius:50%;background:#1e90ff;border:3px solid #fff;
-    box-shadow:0 0 0 2px #1e90ff88, 0 0 12px #1e90ffcc}
+  .you{width:16px;height:16px;border-radius:50%;background:#ffffff;border:3px solid #0d1117;
+    box-shadow:0 0 0 2px #ffffff99, 0 0 12px #ffffffcc}
   .you::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:16px;
-    margin:-8px 0 0 -8px;border-radius:50%;background:#1e90ff66;animation:pulse 1.8s ease-out infinite}
+    margin:-8px 0 0 -8px;border-radius:50%;background:#ffffff66;animation:pulse 1.8s ease-out infinite}
   @keyframes pulse{0%{transform:scale(1);opacity:.7}100%{transform:scale(3.2);opacity:0}}
 </style>
 </head>
@@ -430,9 +435,11 @@ function convertTafTimes(line, ref, tz){
 function tafHtml(raw, pillLeft, ref, tz){
   if (!raw) return "";
   const lines = raw.replace(/\s+(FM\d{6}|BECMG|TEMPO|PROB\d{2})/g, "\n$1").trim().split("\n");
-  return lines.map(ln => {
+  return lines.map((ln, idx) => {
     const cat = catFromVisCeil(parseVisSM(ln), parseCeil(ln));
-    const txt = `<span class="taf-txt">${convertTafTimes(ln, ref, tz)}</span>`;
+    let shown = convertTafTimes(ln, ref, tz);
+    if (idx === 0) shown = shown.replace(/^(TAF(?:\s+(?:AMD|COR))?\s+\S+)/, '<span class="raw-id" style="color:#fff">$1</span>');
+    const txt = `<span class="taf-txt">${shown}</span>`;
     if (cat){
       const col = catColor(cat);
       const pill = `<span class="taf-pill" style="background:${col}">${cat}</span>`;
@@ -505,7 +512,8 @@ function fcstCat(f){
 }
 function tafDecodedHtml(t, pillLeft, tz){
   if (!t || !t.fcsts || !t.fcsts.length) return tafHtml(t && t.rawTAF, pillLeft);
-  return t.fcsts.map((f, i) => {
+  const head = `<div class="taf-id"><span class="raw-id" style="color:#fff">${t.icaoId} TAF</span></div>`;
+  return head + t.fcsts.map((f, i) => {
     const bits = [fcstWind(f), fcstVis(f), decodeWx(f.wxString), fcstClouds(f)].filter(Boolean);
     const txt = `${fcstPrefix(f, i === 0, tz)}: ${bits.join(", ")}`;
     const cat = fcstCat(f);
@@ -845,7 +853,13 @@ function agoStr(ms){
 }
 function metarBoxHtml(s, pillLeft){
   const age = s.obsTime ? `<div class="age">METAR reported ${agoStr(s.obsTime * 1000)}</div>` : "";
-  if (metarMode === "raw") return age + rawLineHtml(s, pillLeft);
+  if (metarMode === "raw") {
+    const da = densityAlt(s);
+    const daLine = da != null
+      ? `<div class="raw-da"><b class="${da >= 5000 ? "hot" : ""}">Density Alt</b>${da.toLocaleString()} ft</div>`
+      : "";
+    return age + rawLineHtml(s, pillLeft) + daLine;
+  }
   const col = catColor(s.fltCat);
   const id = `<span class="raw-id" style="color:${col}">${s.icaoId} ${s.metarType || "METAR"}</span>`;
   const pill = `<span class="taf-pill" style="background:${col}">${s.fltCat||"?"}</span>`;
@@ -864,7 +878,7 @@ function popupEl(s){
     <div class="pop-h"><span class="pop-id">${s.icaoId}</span></div>
     <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm away</div>
     <div class="metarbox">${metarBoxHtml(s, false)}</div>
-    ${taf ? `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span>${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, false)}</div></div>` : ""}
+    ${taf ? `<div class="taf-wrap">${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, false)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
   wireAtis(el.querySelector(".atisBtn"), el.querySelector(".atis-slot"), atisFor(s.icaoId));
   return el;
@@ -908,7 +922,7 @@ function cardEl(s){
   if (tafBtn) tafBtn.addEventListener("click", () => {
     if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; tafBtn.textContent="Forecast (TAF) ▾"; return; }
     slot.dataset.open = "1"; tafBtn.textContent = "Hide forecast ▴";
-    slot.innerHTML = `<div class="taf-wrap"><span class="tag taf">TAF · ${s.icaoId}</span>${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, true)}</div></div>`;
+    slot.innerHTML = `<div class="taf-wrap">${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, true)}</div></div>`;
   });
   wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"), atisFor(s.icaoId));
   return card;
