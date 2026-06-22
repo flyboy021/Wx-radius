@@ -190,6 +190,7 @@
       </div>
       <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
       <button id="modeBtn" class="toggle" title="Show raw or decoded weather">Raw</button>
+      <button id="unitBtn" class="toggle" title="Temperature units">°C</button>
       <button id="radarBtn" class="toggle" title="Toggle weather radar">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6">
           <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/>
@@ -255,6 +256,7 @@ let center = null;
 let lastStations = [];
 let scope = "local";    // "local" (25/50/100nm) or "region"
 let metarMode = "raw";  // "raw" or "plain" — global for all stations
+let tempUnit = "C";     // "C" or "F" for decoded temp/dewpoint
 let timeMode = "z";     // "z" (Zulu) or "local" — affects displayed times
 let lastUpdate = null;
 const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -295,7 +297,8 @@ function fmtClouds(s){
 }
 function fmtVis(s){ return s.visib != null ? `${s.visib} sm` : "—"; }
 function fmtAlt(s){ return s.altim != null ? `${(s.altim*0.0295299830714).toFixed(2)}" Hg` : "—"; }
-function fmtTemp(s){ return s.temp != null ? `${Math.round(s.temp)}°C <b>Dew</b> ${Math.round(s.dewp)}°C` : "—"; }
+function cOrF(c){ return tempUnit === "F" ? `<span class="raw-time">${Math.round(c*9/5+32)}°F</span>` : `${Math.round(c)}°C`; }
+function fmtTemp(s){ return s.temp != null ? `${cOrF(s.temp)} <b>Dew</b> ${cOrF(s.dewp)}` : "—"; }
 
 function decodedGrid(s){
   const rows = [
@@ -1077,6 +1080,13 @@ $("modeBtn").addEventListener("click", () => {
   $("modeBtn").textContent = metarMode === "raw" ? "Raw" : "Plain";
   $("modeBtn").classList.toggle("on", metarMode === "plain");
   if (center) drawBase();   // rebuild the "you are here" popup too
+  renderStations(); renderList();
+});
+$("unitBtn").addEventListener("click", () => {
+  tempUnit = tempUnit === "C" ? "F" : "C";
+  $("unitBtn").textContent = tempUnit === "C" ? "°C" : "°F";
+  $("unitBtn").classList.toggle("on", tempUnit === "F");
+  if (center) drawBase();
   renderStations(); renderList();
 });
 
