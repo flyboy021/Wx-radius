@@ -26,7 +26,7 @@
   h1{font-size:18px;margin:0;font-weight:700;flex:1}
   #zulu{flex:none;background:var(--panel2);border:1px solid #33405440;border-radius:999px;
     padding:6px 16px;font-weight:700;font-size:15px;color:#cdd6e0;letter-spacing:.04em;
-    font-variant-numeric:tabular-nums;cursor:pointer;user-select:none;
+    font-variant-numeric:tabular-nums;cursor:pointer;user-select:none;white-space:nowrap;
     box-shadow:0 1px 0 #0003, inset 0 0 0 1px #ffffff0a}
   #zulu:active{transform:translateY(1px)}
   #zulu.local-time{color:#1a1100;background:#ffb454;border-color:#ffb454}
@@ -275,7 +275,7 @@ const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const warnedZones = new Set();
 const canHover = !!(window.matchMedia && window.matchMedia("(hover: hover)").matches);
 let gpsOk = false;      // do we have a real GPS fix?
-let headerTz = null;    // null = device tz; otherwise the looked-up airport's tz
+let centerTz = null;    // timezone of the area currently being viewed
 
 // ---- geo helpers --------------------------------------------------------
 const toRad = d => d * Math.PI / 180;
@@ -860,7 +860,7 @@ async function load(c, opts){
   opts = opts || {};
   center = c;
   maybeWarnZone(c.lat, c.lon);
-  headerTz = gpsOk ? null : tzOf(c.lat, c.lon);   // no GPS → header uses the airport's zone
+  centerTz = tzOf(c.lat, c.lon);   // zone of the area being viewed
   tickZulu();
   const region = scope === "region";
   $("where").textContent = region ? regionName(c) : `${c.name} · ${radiusNm} nm`;
@@ -1123,14 +1123,21 @@ $("unitBtn").addEventListener("click", () => {
 
 // header clock — tap to switch all displayed times between Zulu and local
 function clockStr(d){
-  // Zulu (grey) when off; the user's local time — or looked-up airport's zone — when on (amber).
   if (timeMode === "z"){
     const p = n => String(n).padStart(2,"0");
     return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}Z`;
   }
-  const o = {hour:"2-digit", minute:"2-digit", second:"2-digit", hour12:false, timeZoneName:"short"};
-  if (headerTz) o.timeZone = headerTz;
-  return d.toLocaleTimeString([], o);
+  const home = gpsOk ? deviceTz : null;   // your own zone (only if we have a GPS fix)
+  const area = centerTz;                  // the zone you're viewing
+  const fmt = (tz, sec) => {
+    const o = {hour:"2-digit", minute:"2-digit", hour12:false, timeZoneName:"short"};
+    if (sec) o.second = "2-digit";
+    if (tz) o.timeZone = tz;
+    return d.toLocaleTimeString([], o);
+  };
+  // both zones when you're located in one and viewing another
+  if (home && area && home !== area) return `${fmt(home, false)} · ${fmt(area, false)}`;
+  return fmt(home || area, true);
 }
 function hmStr(d, tz){
   const p = n => String(n).padStart(2,"0");
