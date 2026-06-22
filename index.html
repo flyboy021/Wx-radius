@@ -291,7 +291,7 @@ function fmtClouds(s){
 }
 function fmtVis(s){ return s.visib != null ? `${s.visib} sm` : "—"; }
 function fmtAlt(s){ return s.altim != null ? `${(s.altim*0.0295299830714).toFixed(2)}" Hg` : "—"; }
-function fmtTemp(s){ return s.temp != null ? `${Math.round(s.temp)}°C / dew ${Math.round(s.dewp)}°C` : "—"; }
+function fmtTemp(s){ return s.temp != null ? `${Math.round(s.temp)}°C <b>Dew</b> ${Math.round(s.dewp)}°C` : "—"; }
 
 function decodedGrid(s){
   const rows = [
