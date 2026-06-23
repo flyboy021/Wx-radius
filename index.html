@@ -1281,6 +1281,20 @@ $("radiusSeg").addEventListener("click", e => {
   else { scope = "local"; radiusNm = Number(b.dataset.r); }
   if (center) load(center);
 });
+// Reopened after being away a while: refresh the weather, but don't replay the intro.
+let hiddenAt = null;
+function refreshOnReturn(){
+  if (!introDone || !center) return;
+  const awayMs = hiddenAt ? Date.now() - hiddenAt
+    : (lastUpdate ? Date.now() - lastUpdate.getTime() : 0);
+  if (awayMs > 5 * 60 * 1000) load(center);
+  hiddenAt = null;
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) hiddenAt = Date.now();
+  else refreshOnReturn();
+});
+window.addEventListener("pageshow", e => { if (e.persisted) refreshOnReturn(); });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
 $("modeBtn").addEventListener("click", () => {
   metarMode = metarMode === "raw" ? "plain" : "raw";
