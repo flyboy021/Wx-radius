@@ -740,19 +740,13 @@ function compass(deg){ return ["N","NE","E","SE","S","SW","W","NW"][Math.round(d
 function updateRibbon(arr){
   const el = $("ribbon"); if (!el) return;
   if (!arr || !arr.length){ el.style.display = "none"; return; }
-  const counts = {VFR:0, MVFR:0, IFR:0, LIFR:0};
-  for (const s of arr) if (counts[s.fltCat] != null) counts[s.fltCat]++;
-  const chip = (c, n) => `<span class="rb-chip"><span class="rb-dot" style="background:${catColor(c)}"></span>${n} ${c}</span>`;
-  const chips = ["VFR","MVFR","IFR","LIFR"].filter(c => counts[c] > 0).map(c => chip(c, counts[c])).join("");
   const near = arr.find(s => s.fltCat === "IFR" || s.fltCat === "LIFR");   // arr is sorted by distance
-  let nearHtml;
   if (near && center){
     const brg = compass(bearingDeg(center.lat, center.lon, near.lat, near.lon));
-    nearHtml = `<span class="rb-near"><b style="color:${catColor(near.fltCat)}">Nearest ${near.fltCat}:</b>${near.icaoId} ${fmtDist(near.dist)} ${brg}</span>`;
+    el.innerHTML = `<span class="rb-near"><b style="color:${catColor(near.fltCat)}">Nearest ${near.fltCat}:</b>${near.icaoId} ${fmtDist(near.dist)} ${brg}</span>`;
   } else {
-    nearHtml = `<span class="rb-near rb-ok">No IFR in view</span>`;
+    el.innerHTML = `<span class="rb-near rb-ok">No IFR in view</span>`;
   }
-  el.innerHTML = `<div class="rb-counts">${chips}</div>${nearHtml}`;
   el.style.display = "flex";
 }
 function youIcon(){
