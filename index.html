@@ -66,6 +66,15 @@
   .legend{display:flex;align-items:center;gap:14px;background:var(--panel);padding:6px 12px;flex-wrap:wrap}
   .legend .item{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--muted)}
   .dot{width:12px;height:12px;border-radius:50%}
+  #ribbon{display:none;align-items:center;gap:12px;justify-content:space-between;
+    background:var(--panel);border-bottom:1px solid var(--line);padding:6px 12px;
+    font-size:12px;overflow-x:auto;white-space:nowrap;flex:none}
+  .rb-counts{display:flex;gap:11px;align-items:center}
+  .rb-chip{display:flex;align-items:center;gap:4px;color:var(--txt);font-weight:700}
+  .rb-dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .rb-near{color:var(--muted);font-weight:600;flex:none}
+  .rb-near b{font-weight:800;margin-right:3px}
+  .rb-ok{color:var(--vfr);font-weight:700}
   #status{padding:8px 12px;font-size:13px}
   #status.err{background:#2a1416;color:#ff9094}
   #list{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
@@ -210,8 +219,10 @@
         <button data-r="region">Region</button>
       </div>
       <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
+      <button id="labelBtn" class="toggle" title="What to show next to each dot">Tag: ID</button>
       <button id="modeBtn" class="toggle" title="Show raw or decoded weather">Raw</button>
       <button id="unitBtn" class="toggle" title="Temperature units">°C</button>
+      <button id="distBtn" class="toggle" title="Distance units (nautical / statute miles)">NM</button>
       <button id="radarBtn" class="toggle" title="Toggle weather radar">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6">
           <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/>
@@ -222,6 +233,7 @@
     </div>
   </header>
 
+  <div id="ribbon"></div>
   <div id="map"></div>
 
   <div class="legend">
@@ -684,13 +696,64 @@ let layer = L.layerGroup().addTo(map);
 let introLayer = L.layerGroup().addTo(map);
 let circle = null, youMarker = null;
 let introDone = false, locValue = null;
+let labelMode = "id";   // dot labels: id | wx | wind
+let distUnit = "nm";    // distance display: nm | sm
+function fmtDist(nm){
+  const v = distUnit === "sm" ? nm * 1.15078 : nm;
+  return `${Math.round(v)} ${distUnit}`;
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+function ceilFt(s){
+  let c = null;
+  if (s.clouds) for (const cl of s.clouds)
+    if ((cl.cover === "BKN" || cl.cover === "OVC") && cl.base != null) c = c == null ? cl.base : Math.min(c, cl.base);
+  return c;
+}
+function stnLabelText(s){
+  if (labelMode === "wx"){
+    const c = ceilFt(s);
+    const cl = c != null ? c + "′" : (s.cover === "CLR" || s.cover === "SKC" ? "clr" : "");
+    const v = s.visib != null ? String(s.visib).replace("+", "") + "sm" : "";
+    return [cl, v].filter(Boolean).join(" ") || s.icaoId;
+  }
+  if (labelMode === "wind"){
+    if (s.wspd == null) return s.icaoId;
+    if (s.wspd === 0) return "calm";
+    return windBarb(s.wdir, s.wspd) + s.wspd + "kt";
+  }
+  return s.icaoId;
+}
 function stationIcon(s){
-  const lbl = scope === "region" ? "" : `<span class="lbl">${s.icaoId}</span>`;
+  const lbl = scope === "region" ? "" : `<span class="lbl">${stnLabelText(s)}</span>`;
   return L.divIcon({className:"",
     html:`<div class="stn"><span class="pin" style="background:${catColor(s.fltCat)}"></span>${lbl}</div>`,
-    iconSize:[90,20], iconAnchor:[10,11]});
+    iconSize:[130,20], iconAnchor:[10,11]});
+}
+function bearingDeg(lat1, lon1, lat2, lon2){
+  const r = Math.PI / 180;
+  const y = Math.sin((lon2 - lon1) * r) * Math.cos(lat2 * r);
+  const x = Math.cos(lat1 * r) * Math.sin(lat2 * r) - Math.sin(lat1 * r) * Math.cos(lat2 * r) * Math.cos((lon2 - lon1) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+function compass(deg){ return ["N","NE","E","SE","S","SW","W","NW"][Math.round(deg / 45) % 8]; }
+function updateRibbon(arr){
+  const el = $("ribbon"); if (!el) return;
+  if (!arr || !arr.length){ el.style.display = "none"; return; }
+  const counts = {VFR:0, MVFR:0, IFR:0, LIFR:0};
+  for (const s of arr) if (counts[s.fltCat] != null) counts[s.fltCat]++;
+  const chip = (c, n) => `<span class="rb-chip"><span class="rb-dot" style="background:${catColor(c)}"></span>${n} ${c}</span>`;
+  const chips = ["VFR","MVFR","IFR","LIFR"].filter(c => counts[c] > 0).map(c => chip(c, counts[c])).join("");
+  const near = arr.find(s => s.fltCat === "IFR" || s.fltCat === "LIFR");   // arr is sorted by distance
+  let nearHtml;
+  if (near && center){
+    const brg = compass(bearingDeg(center.lat, center.lon, near.lat, near.lon));
+    nearHtml = `<span class="rb-near"><b style="color:${catColor(near.fltCat)}">Nearest ${near.fltCat}:</b>${near.icaoId} ${fmtDist(near.dist)} ${brg}</span>`;
+  } else {
+    nearHtml = `<span class="rb-near rb-ok">No IFR in view</span>`;
+  }
+  el.innerHTML = `<div class="rb-counts">${chips}</div>${nearHtml}`;
+  el.style.display = "flex";
 }
 function youIcon(){
   return L.divIcon({className:"", html:`<div class="you"></div>`, iconSize:[16,16], iconAnchor:[8,8]});
@@ -915,7 +978,7 @@ function popupEl(s){
   const taf = s.taf;
   el.innerHTML = `
     <div class="pop-h"><span class="pop-id">${s.icaoId}</span></div>
-    <div class="pop-name">${(s.name||"").trim()} · ${Math.round(s.dist)} nm away</div>
+    <div class="pop-name">${(s.name||"").trim()} · ${fmtDist(s.dist)} away</div>
     <div class="metarbox">${metarBoxHtml(s, false)}</div>
     ${taf ? `<div class="taf-wrap">${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, false)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
@@ -929,9 +992,11 @@ function renderStations(){
   const arr = visibleStations();
   if (!arr.length){
     setStatus(lastStations.length ? "No stations match this filter." : `No reporting stations within ${radiusNm}nm.`);
+    updateRibbon([]);
     return;
   }
   setStatus("");
+  updateRibbon(arr);
   const maxH = Math.max(180, Math.round(map.getSize().y * 0.72));
   for (const s of arr){
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
@@ -951,7 +1016,7 @@ function cardEl(s){
     <div class="body">
       <div class="hdr">
         <span class="id">${s.icaoId}</span>
-        <span class="dist">${Math.round(s.dist)} nm away · ${(s.name||"").trim()}</span>
+        <span class="dist">${fmtDist(s.dist)} away · ${(s.name||"").trim()}</span>
       </div>
       <div class="metarbox">${metarBoxHtml(s, true)}</div>
       ${taf ? `<button type="button" class="tafBtn">Forecast (TAF) ▾</button><div class="taf-slot"></div>` : ""}
@@ -1295,6 +1360,19 @@ document.addEventListener("visibilitychange", () => {
   else refreshOnReturn();
 });
 window.addEventListener("pageshow", e => { if (e.persisted) refreshOnReturn(); });
+const LBL_SEQ = ["id", "wx", "wind"], LBL_TXT = {id:"Tag: ID", wx:"Tag: Wx", wind:"Tag: Wind"};
+$("labelBtn").addEventListener("click", () => {
+  labelMode = LBL_SEQ[(LBL_SEQ.indexOf(labelMode) + 1) % LBL_SEQ.length];
+  $("labelBtn").textContent = LBL_TXT[labelMode];
+  $("labelBtn").classList.toggle("on", labelMode !== "id");
+  renderStations();
+});
+$("distBtn").addEventListener("click", () => {
+  distUnit = distUnit === "nm" ? "sm" : "nm";
+  $("distBtn").textContent = distUnit.toUpperCase();
+  $("distBtn").classList.toggle("on", distUnit === "sm");
+  rerenderKeepingPopup();
+});
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
 $("modeBtn").addEventListener("click", () => {
   metarMode = metarMode === "raw" ? "plain" : "raw";
