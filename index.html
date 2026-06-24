@@ -1530,7 +1530,7 @@ function useMyLocation(){
   setStatus("Getting your location…");
   if (!navigator.geolocation){ setStatus("Location not available — search an airport.", true); return; }
   navigator.geolocation.getCurrentPosition(
-    p => { gpsOk = true; load({lat:p.coords.latitude, lon:p.coords.longitude, name:"My location"}); },
+    p => { gpsOk = true; exitRouteMode(); load({lat:p.coords.latitude, lon:p.coords.longitude, name:"My location"}); },
     () => setStatus("Location denied — search an airport above.", true),
     {enableHighAccuracy:true, timeout:10000}
   );
@@ -1700,6 +1700,16 @@ async function toggleRadar(){
 }
 
 // ---- events -------------------------------------------------------------
+// Leaving a planned route behind for a plain airport/radius search — clear its state so the
+// old route line/corridor/markers don't linger on the map (drawBase() redraws whatever `scope`
+// says, so a stale scope === "route" would otherwise keep redrawing the old route).
+function exitRouteMode(){
+  scope = (scope === "route") ? "local" : scope;
+  route = [];
+  clearRouteLayer();
+  $("routePanel").style.display = "none";
+  $("routeBtn").classList.remove("on");
+}
 $("go").addEventListener("click", async () => {
   cancelIntro();
   const raw = $("q").value.trim();
@@ -1713,7 +1723,7 @@ $("go").addEventListener("click", async () => {
     if (route.length >= 2) loadRoute(); else setStatus("");
     return;
   }
-  try{ setStatus("Searching…"); await load(await geocode(raw)); }
+  try{ setStatus("Searching…"); exitRouteMode(); await load(await geocode(raw)); }
   catch(e){ setStatus(e.message, true); }
 });
 $("skipBtn").addEventListener("click", skipIntro);
