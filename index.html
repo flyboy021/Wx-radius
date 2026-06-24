@@ -75,6 +75,34 @@
   .rb-near{color:var(--muted);font-weight:600;flex:none}
   .rb-near b{font-weight:800;margin-right:3px}
   .rb-ok{color:var(--vfr);font-weight:700}
+  #routePanel{background:var(--panel);border-bottom:1px solid var(--line);padding:8px 12px;
+    display:flex;flex-direction:column;gap:8px}
+  .rp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .rp-row .spacer{flex:1}
+  #rpInput{flex:1;min-width:120px;background:#0e141c;border:1px solid var(--line);color:var(--txt);
+    border-radius:7px;padding:7px 9px;font-size:14px}
+  #routePanel button{background:#1b2330;color:var(--txt);border:1px solid var(--line);
+    border-radius:7px;padding:6px 11px;font-size:13px;font-weight:700;cursor:pointer}
+  #routePanel button.ghost{background:transparent;color:var(--muted);font-weight:600}
+  #routePanel button.on{background:var(--accent,#2b6fff);color:#fff;border-color:transparent}
+  #rpPlan{background:#11a911;color:#fff;border-color:transparent}
+  #rpSaved{background:#0e141c;border:1px solid var(--line);color:var(--txt);border-radius:7px;
+    padding:6px 8px;font-size:13px;flex:1;min-width:120px}
+  .rp-note{color:var(--muted);font-size:12px}
+  .rp-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:4px}
+  .chip-wp{display:inline-flex;align-items:center;gap:5px;background:#1b2330;border:1px solid var(--line);
+    border-radius:6px;padding:3px 4px 3px 8px;font-size:13px;font-weight:800}
+  .chip-x{background:transparent;border:none;color:var(--muted);font-size:15px;line-height:1;
+    cursor:pointer;padding:0 3px}
+  .chip-arrow{color:var(--muted);font-size:13px}
+  .wp{display:flex;align-items:center;gap:3px;white-space:nowrap}
+  .wp-dot{width:18px;height:18px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0006;
+    flex:none;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .wp-lbl{font-size:12px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 1px 2px #000}
+  .rrole{font-size:9px;font-weight:800;letter-spacing:.04em;padding:1px 5px;border-radius:4px;
+    margin-left:6px;vertical-align:middle;color:#fff}
+  .rrole.dep{background:#11a911}
+  .rrole.dest{background:#e0152b}
   #status{padding:8px 12px;font-size:13px}
   #status.err{background:#2a1416;color:#ff9094}
   #list{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
@@ -218,6 +246,7 @@
         <button data-r="100">100</button>
         <button data-r="region">Region</button>
       </div>
+      <button id="routeBtn" class="toggle" title="Plan weather along a route">Route</button>
       <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
       <button id="labelBtn" class="toggle" title="What to show next to each dot">Tag: ID</button>
       <button id="modeBtn" class="toggle" title="Show raw or decoded weather">Raw</button>
@@ -232,6 +261,33 @@
       <button id="skipBtn" class="toggle on" title="Skip the intro" style="display:none">Skip ▸</button>
     </div>
   </header>
+
+  <div id="routePanel" style="display:none">
+    <div class="rp-row">
+      <input id="rpInput" placeholder="Add airport id(s), e.g. KDFW KOKC" autocapitalize="characters"
+             autocorrect="off" spellcheck="false" />
+      <button id="rpAdd">Add</button>
+      <button id="rpTap" class="toggle" title="Tap airports on the map to add them">Tap to add</button>
+    </div>
+    <div id="rpChips" class="rp-chips"></div>
+    <div class="rp-row">
+      <div class="seg" id="corridorSeg">
+        <button data-c="25">25</button>
+        <button data-c="50" class="on">50</button>
+        <button data-c="75">75</button>
+      </div>
+      <span class="rp-note">nm each side</span>
+      <span class="spacer"></span>
+      <button id="rpPlan">Plan ▸</button>
+      <button id="rpClear" class="ghost">Clear</button>
+    </div>
+    <div class="rp-row">
+      <button id="rpSave" class="ghost">Save</button>
+      <select id="rpSaved"></select>
+      <button id="rpLoad" class="ghost">Load</button>
+      <button id="rpDel" class="ghost">Delete</button>
+    </div>
+  </div>
 
   <div id="ribbon"></div>
   <div id="map"></div>
@@ -302,6 +358,10 @@ const warnedZones = new Set();
 const canHover = !!(window.matchMedia && window.matchMedia("(hover: hover)").matches);
 let gpsOk = false;      // do we have a real GPS fix?
 let centerTz = null;    // timezone of the area currently being viewed
+// ---- route state --------------------------------------------------------
+let route = [];          // [{id,lat,lon,name}] ordered waypoints
+let corridorNm = 50;     // 25 / 50 / 75 nm each side of the route line
+let addMode = false;     // tap-airports-on-map mode
 
 // ---- geo helpers --------------------------------------------------------
 const toRad = d => d * Math.PI / 180;
@@ -737,9 +797,26 @@ function bearingDeg(lat1, lon1, lat2, lon2){
   return (Math.atan2(y, x) / r + 360) % 360;
 }
 function compass(deg){ return ["N","NE","E","SE","S","SW","W","NW"][Math.round(deg / 45) % 8]; }
+function distLabel(s){ return `${fmtDist(s.dist)} ${scope === "route" ? "off route" : "away"}`; }
+function roleBadge(s){
+  return s.routeRole === "dep" ? `<span class="rrole dep">DEP</span>`
+    : s.routeRole === "dest" ? `<span class="rrole dest">DEST</span>` : "";
+}
+function updateRouteRibbon(arr){
+  const el = $("ribbon"); if (!el) return;
+  const order = {LIFR:4, IFR:3, MVFR:2, VFR:1};
+  let worst = null;
+  for (const s of arr) if (!worst || (order[s.fltCat]||0) > (order[worst]||0)) worst = s.fltCat;
+  let html = worst ? `<span class="rb-chip"><span class="rb-dot" style="background:${catColor(worst)}"></span>Worst on route: ${worst}</span>` : "";
+  const bad = arr.find(s => s.fltCat === "IFR" || s.fltCat === "LIFR");
+  if (bad) html += `<span class="rb-near"><b style="color:${catColor(bad.fltCat)}">${bad.fltCat}:</b>${bad.icaoId} ${fmtDist(bad.along)} in</span>`;
+  el.innerHTML = html || `<span class="rb-near rb-ok">No IFR on route</span>`;
+  el.style.display = "flex";
+}
 function updateRibbon(arr){
   const el = $("ribbon"); if (!el) return;
   if (!arr || !arr.length){ el.style.display = "none"; return; }
+  if (scope === "route"){ updateRouteRibbon(arr); return; }
   const near = arr.find(s => s.fltCat === "IFR" || s.fltCat === "LIFR");   // arr is sorted by distance
   if (near && center){
     const brg = compass(bearingDeg(center.lat, center.lon, near.lat, near.lon));
@@ -764,9 +841,166 @@ function visibleStations(){
   return lastStations;   // always show every reporting station
 }
 
+// ===== ROUTE FEATURE =====================================================
+let routeLayer = null;
+// Great-circle interpolation between two points (slerp on the sphere).
+function gcInterpolate(a, b, n){
+  const φ1=toRad(a.lat), λ1=toRad(a.lon), φ2=toRad(b.lat), λ2=toRad(b.lon);
+  const d = 2*Math.asin(Math.min(1, Math.sqrt(Math.sin((φ2-φ1)/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin((λ2-λ1)/2)**2)));
+  if (d === 0) return [[a.lat,a.lon],[b.lat,b.lon]];
+  const out=[];
+  for (let i=0;i<=n;i++){
+    const f=i/n, A=Math.sin((1-f)*d)/Math.sin(d), B=Math.sin(f*d)/Math.sin(d);
+    const x=A*Math.cos(φ1)*Math.cos(λ1)+B*Math.cos(φ2)*Math.cos(λ2);
+    const y=A*Math.cos(φ1)*Math.sin(λ1)+B*Math.cos(φ2)*Math.sin(λ2);
+    const z=A*Math.sin(φ1)+B*Math.sin(φ2);
+    out.push([Math.atan2(z, Math.hypot(x,y))*180/Math.PI, Math.atan2(y,x)*180/Math.PI]);
+  }
+  return out;
+}
+// Planar (equirectangular, nm) projection of the route for corridor math.
+function buildRouteProj(){
+  const lat0 = route.reduce((s,p)=>s+p.lat,0)/route.length;
+  const k = Math.max(Math.cos(toRad(lat0)), 0.01);
+  const xy = p => [p.lon*k*60, p.lat*60];   // ~nautical miles
+  const segs=[]; let cum=0;
+  for (let i=0;i<route.length-1;i++){
+    const A=xy(route[i]), B=xy(route[i+1]);
+    const len=Math.hypot(B[0]-A[0], B[1]-A[1]);
+    segs.push({A,B,len,cum}); cum+=len;
+  }
+  return {segs, xy, total:cum};
+}
+// Cross-track (perp) and along-track distance of a point vs the route.
+function routeDistAlong(lat, lon, proj){
+  const P = proj.xy({lat,lon});
+  let best = {perp:Infinity, along:0};
+  for (const s of proj.segs){
+    const dx=s.B[0]-s.A[0], dy=s.B[1]-s.A[1], len2=dx*dx+dy*dy;
+    let t = len2 ? ((P[0]-s.A[0])*dx + (P[1]-s.A[1])*dy)/len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const cx=s.A[0]+t*dx, cy=s.A[1]+t*dy, perp=Math.hypot(P[0]-cx, P[1]-cy);
+    if (perp < best.perp) best = {perp, along: s.cum + t*Math.sqrt(len2)};
+  }
+  return best;
+}
+function routeLegs(){
+  const legs=[]; let total=0;
+  for (let i=0;i<route.length-1;i++){
+    const d=distanceNm(route[i].lat,route[i].lon,route[i+1].lat,route[i+1].lon);
+    legs.push(d); total+=d;
+  }
+  return {legs, total};
+}
+function routeBbox(){
+  let s=90,w=180,n=-90,e=-180;
+  for (const p of route){ s=Math.min(s,p.lat); n=Math.max(n,p.lat); w=Math.min(w,p.lon); e=Math.max(e,p.lon); }
+  const padLat = corridorNm/60, padLon = corridorNm/(60*Math.max(Math.cos(toRad((s+n)/2)),0.01));
+  return [s-padLat, w-padLon, n+padLat, e+padLon];
+}
+function clearRouteLayer(){ if (routeLayer){ map.removeLayer(routeLayer); routeLayer=null; } }
+function wpIcon(id, role){
+  const bg = role==="dep" ? "#11a911" : role==="dest" ? "#e0152b" : "#ffd23f";
+  const fg = role==="via" ? "#1a1f29" : "#fff";
+  return L.divIcon({className:"", iconSize:[80,22], iconAnchor:[11,11],
+    html:`<div class="wp"><span class="wp-dot" style="background:${bg};color:${fg}">${role==="via"?"":(role==="dep"?"D":"A")}</span><span class="wp-lbl">${id}</span></div>`});
+}
+function drawRoute(){
+  clearRouteLayer();
+  if (!route.length) return;
+  routeLayer = L.layerGroup().addTo(map);
+  if (route.length >= 2){
+    const pts=[];
+    for (let i=0;i<route.length-1;i++){
+      const seg=gcInterpolate(route[i], route[i+1], 48);
+      if (i>0) seg.shift();
+      pts.push(...seg);
+    }
+    L.polyline(pts, {color:"#ffd23f", weight:3, opacity:.9}).addTo(routeLayer);
+  }
+  route.forEach((p,i)=>{
+    const role = i===0 ? "dep" : (i===route.length-1 ? "dest" : "via");
+    L.marker([p.lat,p.lon], {icon:wpIcon(p.id, role), zIndexOffset:900})
+      .addTo(routeLayer).bindPopup(`${p.id}${p.name?" · "+p.name:""}`);
+  });
+}
+function routeBoundsLL(){ return route.map(p=>[p.lat,p.lon]); }
+async function loadRoute(){
+  if (route.length < 2){ setStatus("Add at least two waypoints to plan a route.", true); return; }
+  scope = "route";
+  center = route[0];
+  centerTz = tzOf(center.lat, center.lon); tickZulu();
+  const {total} = routeLegs();
+  $("where").textContent = `${route.map(p=>p.id).join(" → ")} · ${fmtDist(total)}`;
+  setStatus("Loading route weather…");
+  try{
+    const [s,w,n,e] = routeBbox();
+    const box = `${s},${w},${n},${e}`;
+    const [metars, , tafs] = await Promise.all([
+      getJson(`${API}/metar?bbox=${box}&format=json`),
+      loadAtisAll(),
+      getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[])
+    ]);
+    const tafById={}; for (const t of tafs) tafById[t.icaoId]=t;
+    const proj = buildRouteProj();
+    const depId = route[0].id, destId = route[route.length-1].id;
+    lastStations = metars.map(m=>{
+        const r = routeDistAlong(m.lat, m.lon, proj);
+        return {...m, taf: tafById[m.icaoId]||null, dist:r.perp, along:r.along,
+          routeRole: m.icaoId===depId ? "dep" : (m.icaoId===destId ? "dest" : null)};
+      })
+      .filter(m => m.dist <= corridorNm)
+      .sort((a,b)=> a.along - b.along);
+    drawBase();
+    if (route.length) map.fitBounds(routeBoundsLL(), {padding:[34,34]});
+    renderStations(); renderList();
+    setTimeout(()=>map.invalidateSize(), 80);
+    if (lastStations[0]) updateFavicon(lastStations[0].fltCat);
+    lastUpdate = new Date(); setUpdated();
+    setStatus(lastStations.length ? "" : "No reporting stations along this route.");
+  }catch(e){ setStatus(e.message || "Could not load route", true); }
+}
+// ---- waypoint management ----
+function renderChips(){
+  const el=$("rpChips"); if (!el) return;
+  el.innerHTML = route.map((p,i)=>
+    `<span class="chip-wp"><b>${p.id}</b><button data-i="${i}" class="chip-x" title="Remove">×</button></span>`
+    + (i<route.length-1 ? `<span class="chip-arrow">→</span>` : "")
+  ).join("");
+}
+function addWaypoint(wp){
+  if (route.length && route[route.length-1].id === wp.id) return;  // no dup in a row
+  route.push(wp); renderChips();
+  if (scope === "route") drawRoute();
+}
+async function addWaypointsFromText(txt){
+  const ids = (txt||"").trim().toUpperCase().split(/[\s,]+/).filter(Boolean);
+  for (const id of ids){
+    try{ const hit = await geocode(id); addWaypoint({id, lat:hit.lat, lon:hit.lon, name:(hit.name||"").trim()}); }
+    catch(e){ setStatus(`"${id}" not found`, true); }
+  }
+}
+// ---- saved routes (localStorage) ----
+function savedRoutes(){ try{ return JSON.parse(localStorage.getItem("wxRoutes")||"{}"); }catch(e){ return {}; } }
+function refreshSavedSelect(){
+  const sel=$("rpSaved"); if (!sel) return;
+  const names=Object.keys(savedRoutes());
+  sel.innerHTML = `<option value="">Saved routes…</option>` + names.map(n=>`<option>${n}</option>`).join("");
+}
+function saveCurrentRoute(){
+  if (route.length<2){ setStatus("Plan a route before saving.", true); return; }
+  const name=(prompt("Name this route:", route.map(p=>p.id).join("-"))||"").trim();
+  if (!name) return;
+  const all=savedRoutes(); all[name]=route.map(p=>({id:p.id,lat:p.lat,lon:p.lon,name:p.name}));
+  localStorage.setItem("wxRoutes", JSON.stringify(all)); refreshSavedSelect();
+  $("rpSaved").value=name;
+}
+// ===== END ROUTE FEATURE =================================================
 function drawBase(){
   if (circle){ map.removeLayer(circle); circle = null; }
-  if (youMarker) map.removeLayer(youMarker);
+  if (youMarker){ map.removeLayer(youMarker); youMarker = null; }
+  clearRouteLayer();
+  if (scope === "route"){ drawRoute(); return; }
   if (!center) return;
   if (scope !== "region"){
     circle = L.circle([center.lat, center.lon], {radius: radiusNm*1852,
@@ -971,8 +1205,8 @@ function popupEl(s){
   el.className = "pop";
   const taf = s.taf;
   el.innerHTML = `
-    <div class="pop-h"><span class="pop-id">${s.icaoId}</span></div>
-    <div class="pop-name">${(s.name||"").trim()} · ${fmtDist(s.dist)} away</div>
+    <div class="pop-h"><span class="pop-id">${s.icaoId}</span>${roleBadge(s)}</div>
+    <div class="pop-name">${(s.name||"").trim()} · ${distLabel(s)}</div>
     <div class="metarbox">${metarBoxHtml(s, false)}</div>
     ${taf ? `<div class="taf-wrap">${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, false)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
@@ -995,8 +1229,12 @@ function renderStations(){
   for (const s of arr){
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
     m._icao = s.icaoId; markersByIcao[s.icaoId] = m;
-    m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
-    if (canHover) m.on("mouseover", () => m.openPopup());   // hover on desktop; single tap on touch
+    if (addMode){
+      m.on("click", () => addWaypoint({id:s.icaoId, lat:s.lat, lon:s.lon, name:(s.name||"").trim()}));
+    } else {
+      m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
+      if (canHover) m.on("mouseover", () => m.openPopup());   // hover on desktop; single tap on touch
+    }
   }
 }
 
@@ -1009,8 +1247,8 @@ function cardEl(s){
   card.innerHTML = `
     <div class="body">
       <div class="hdr">
-        <span class="id">${s.icaoId}</span>
-        <span class="dist">${fmtDist(s.dist)} away · ${(s.name||"").trim()}</span>
+        <span class="id">${s.icaoId}</span>${roleBadge(s)}
+        <span class="dist">${distLabel(s)} · ${(s.name||"").trim()}</span>
       </div>
       <div class="metarbox">${metarBoxHtml(s, true)}</div>
       ${taf ? `<button type="button" class="tafBtn">Forecast (TAF) ▾</button><div class="taf-slot"></div>` : ""}
@@ -1366,6 +1604,50 @@ $("distBtn").addEventListener("click", () => {
   $("distBtn").textContent = distUnit.toUpperCase();
   $("distBtn").classList.toggle("on", distUnit === "sm");
   rerenderKeepingPopup();
+});
+// ---- route controls ----
+$("routeBtn").addEventListener("click", () => {
+  const p = $("routePanel"), open = p.style.display === "none";
+  p.style.display = open ? "block" : "none";
+  $("routeBtn").classList.toggle("on", open);
+  if (open){ renderChips(); refreshSavedSelect(); }
+  else if (addMode){ addMode = false; $("rpTap").classList.remove("on"); renderStations(); }
+});
+$("rpAdd").addEventListener("click", async () => { await addWaypointsFromText($("rpInput").value); $("rpInput").value = ""; });
+$("rpInput").addEventListener("keydown", e => { if (e.key === "Enter") $("rpAdd").click(); });
+$("rpTap").addEventListener("click", () => {
+  addMode = !addMode;
+  $("rpTap").classList.toggle("on", addMode);
+  setStatus(addMode ? "Tap airports on the map to add them to your route." : "");
+  renderStations();
+});
+$("corridorSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  [...$("corridorSeg").children].forEach(x => x.classList.toggle("on", x === b));
+  corridorNm = Number(b.dataset.c);
+  if (scope === "route" && route.length >= 2) loadRoute();
+});
+$("rpPlan").addEventListener("click", () => {
+  cancelIntro();
+  if (addMode){ addMode = false; $("rpTap").classList.remove("on"); }
+  loadRoute();
+});
+$("rpClear").addEventListener("click", () => { route = []; renderChips(); clearRouteLayer(); });
+$("rpChips").addEventListener("click", e => {
+  const x = e.target.closest(".chip-x"); if (!x) return;
+  route.splice(Number(x.dataset.i), 1); renderChips();
+  if (scope === "route"){ if (route.length >= 2) loadRoute(); else drawRoute(); }
+});
+$("rpSave").addEventListener("click", saveCurrentRoute);
+$("rpLoad").addEventListener("click", () => {
+  const n = $("rpSaved").value; if (!n) return;
+  const all = savedRoutes(); if (!all[n]) return;
+  route = all[n].map(p => ({...p})); renderChips(); cancelIntro(); loadRoute();
+});
+$("rpDel").addEventListener("click", () => {
+  const n = $("rpSaved").value; if (!n) return;
+  const all = savedRoutes(); delete all[n];
+  localStorage.setItem("wxRoutes", JSON.stringify(all)); refreshSavedSelect();
 });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
 $("modeBtn").addEventListener("click", () => {
