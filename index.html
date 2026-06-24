@@ -1007,25 +1007,44 @@ async function loadRoute(){
   $("where").textContent = `${route.map(p=>p.id).join(" → ")} · ${fmtDist(total)}`;
   setStatus("Loading route weather…");
   try{
-    const [s,w,n,e] = region ? regionBox(center) : routeBbox();
-    const box = `${s},${w},${n},${e}`;
-    const wpIds = route.map(p => p.id).join(",");
-    const [metars, , tafs, wpMetars] = await Promise.all([
-      getJson(`${API}/metar?bbox=${box}&format=json`),
-      loadAtisAll(),
-      getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[]),
-      // The bbox query can silently omit a waypoint's own METAR (e.g. when it's a smaller
-      // field near a busier one) — fetch the route's own airports by id to guarantee they
-      // always show real weather when it exists, instead of falling back to "no data".
-      getJson(`${API}/metar?ids=${wpIds}&format=json`).catch(()=>[])
-    ]);
-    const tafById={}; for (const t of tafs) tafById[t.icaoId]=t;
     const proj = buildRouteProj();
     const depId = route[0].id, destId = route[route.length-1].id;
-    const byId = new Map(metars.map(m => [m.icaoId, m]));
-    for (const m of wpMetars) if (!byId.has(m.icaoId)) byId.set(m.icaoId, m);
+    const widthNm = corridorWidthNm();   // 25/50/100, or 25 while Region/US is selected
+
+    // Every airport within the corridor, found ahead of time from the local airport index.
+    // We then fetch METARs for these ids explicitly (in batches) rather than relying solely
+    // on the AWC bbox query, which silently caps/samples its results on large boxes and can
+    // omit stations that do have current weather.
+    const allAirports = await loadAirportsIndex();
+    const nearMap = new Map();
+    for (const a of allAirports){
+      const r = routeDistAlong(a.lat, a.lon, proj);
+      if (r.perp <= widthNm) nearMap.set(a.icaoId, {lat:a.lat, lon:a.lon, dist:r.perp, along:r.along});
+    }
+    for (const p of route){   // guarantee typed waypoints are covered even if missing from the index
+      if (!nearMap.has(p.id)){
+        const r = routeDistAlong(p.lat, p.lon, proj);
+        nearMap.set(p.id, {lat:p.lat, lon:p.lon, dist:r.perp, along:r.along});
+      }
+    }
+
+    const [s,w,n,e] = region ? regionBox(center) : routeBbox();
+    const box = `${s},${w},${n},${e}`;
+    const nearIds = [...nearMap.keys()];
+    const idChunks = [];
+    for (let i=0;i<nearIds.length;i+=200) idChunks.push(nearIds.slice(i,i+200));
+    const [farMetars, , tafs, ...nearBatches] = await Promise.all([
+      getJson(`${API}/metar?bbox=${box}&format=json`).catch(()=>[]),
+      loadAtisAll(),
+      getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[]),
+      ...idChunks.map(c => getJson(`${API}/metar?ids=${c.join(",")}&format=json`).catch(()=>[]))
+    ]);
+    const tafById={}; for (const t of tafs) tafById[t.icaoId]=t;
+    const byId = new Map(farMetars.map(m => [m.icaoId, m]));
+    for (const batch of nearBatches) for (const m of batch) byId.set(m.icaoId, m);  // explicit near data wins
     let stations = [...byId.values()].map(m=>{
-      const r = routeDistAlong(m.lat, m.lon, proj);
+      const known = nearMap.get(m.icaoId);
+      const r = known ? {perp:known.dist, along:known.along} : routeDistAlong(m.lat, m.lon, proj);
       return {...m, taf: tafById[m.icaoId]||null, dist:r.perp, along:r.along,
         routeRole: m.icaoId===depId ? "dep" : (m.icaoId===destId ? "dest" : null)};
     });
@@ -1038,21 +1057,13 @@ async function loadRoute(){
     } else {
       stations = stations.filter(m => m.dist <= corridorNm);
     }
-    // Fill in every other airport along the corridor, even ones with no current METAR.
-    try{
-      const widthNm = corridorWidthNm();
-      const allAirports = await loadAirportsIndex();
-      const haveIds = new Set(stations.map(s => s.icaoId));
-      for (const a of allAirports){
-        if (haveIds.has(a.icaoId)) continue;
-        const r = routeDistAlong(a.lat, a.lon, proj);
-        if (r.perp <= widthNm){
-          stations.push({icaoId:a.icaoId, lat:a.lat, lon:a.lon, dist:r.perp, along:r.along,
-            fltCat:null, noWx:true, routeRole: a.icaoId===depId ? "dep" : (a.icaoId===destId ? "dest" : null)});
-          haveIds.add(a.icaoId);
-        }
-      }
-    }catch(e){ /* no-METAR airport overlay is best-effort */ }
+    // Fill in every other airport along the corridor that has no current METAR.
+    const haveIds = new Set(stations.map(s => s.icaoId));
+    for (const [id, a] of nearMap){
+      if (haveIds.has(id)) continue;
+      stations.push({icaoId:id, lat:a.lat, lon:a.lon, dist:a.dist, along:a.along,
+        fltCat:null, noWx:true, routeRole: id===depId ? "dep" : (id===destId ? "dest" : null)});
+    }
     stations.sort((a,b)=> a.along - b.along);   // behind departure → past destination
     // Departure's own METAR leads, then arrival's, then the rest of the route in order.
     const dep = stations.find(s => s.routeRole === "dep");
