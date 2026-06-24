@@ -84,7 +84,6 @@
     border-radius:7px;padding:6px 11px;font-size:13px;font-weight:700;cursor:pointer}
   #routePanel button.ghost{background:transparent;color:var(--muted);font-weight:600}
   #routePanel button.on{background:var(--accent,#2b6fff);color:#fff;border-color:transparent}
-  #rpPlan{background:#11a911;color:#fff;border-color:transparent}
   .rp-note{color:var(--muted);font-size:12px}
   .rp-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:4px;flex:1}
   .chip-wp{display:inline-flex;align-items:center;gap:5px;background:#1b2330;border:1px solid var(--line);
@@ -262,7 +261,6 @@
   <div id="routePanel" style="display:none">
     <div class="rp-row">
       <div id="rpChips" class="rp-chips"></div>
-      <button id="rpPlan">Plan ▸</button>
       <button id="rpClear" class="ghost">Clear</button>
     </div>
     <div class="rp-row">
@@ -794,8 +792,7 @@ function updateRouteRibbon(arr){
   const order = {LIFR:4, IFR:3, MVFR:2, VFR:1};
   let worst = null;
   for (const s of arr) if (!worst || (order[s.fltCat]||0) > (order[worst]||0)) worst = s.fltCat;
-  let html = worst ? `<span class="rb-chip"><span class="rb-dot" style="background:${catColor(worst)}"></span>Worst on route: ${worst}</span>` : "";
-  if (worst === "IFR" || worst === "LIFR") html += `<span class="rb-vnr">VFR flight not recommended</span>`;
+  let html = (worst === "IFR" || worst === "LIFR") ? `<span class="rb-vnr">VFR flight not recommended</span>` : "";
   const bad = arr.find(s => s.fltCat === "IFR" || s.fltCat === "LIFR");
   if (bad){
     const where = bad.along < 0 ? "before dep" : `${fmtDist(bad.along)} in`;
@@ -985,8 +982,12 @@ function drawRoute(){
     const role = i===0 ? "dep" : (i===route.length-1 ? "dest" : "via");
     const st = lastStations.find(s => s.icaoId === p.id);
     const fltCat = (st && !st.noWx) ? st.fltCat : null;
-    L.marker([p.lat,p.lon], {icon:wpIcon(p.id, role, fltCat), zIndexOffset:900})
-      .addTo(routeLayer).bindPopup(`${p.id}${p.name?" · "+p.name:""}`);
+    const m = L.marker([p.lat,p.lon], {icon:wpIcon(p.id, role, fltCat), zIndexOffset:900}).addTo(routeLayer);
+    // Reuse the full weather popup when we have station data for this waypoint, so dep/dest
+    // don't need a second overlapping marker on the map just to show their METAR.
+    if (st) m.bindPopup(popupEl(st), {maxWidth:330, minWidth:250, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
+    else m.bindPopup(`${p.id}${p.name?" · "+p.name:""}`);
+    if (st){ m._icao = st.icaoId; markersByIcao[st.icaoId] = m; if (canHover) m.on("mouseover", () => m.openPopup()); }
   });
 }
 function routeBoundsLL(){ return route.map(p=>[p.lat,p.lon]); }
@@ -1123,6 +1124,7 @@ function drawBase(){
   if (circle){ map.removeLayer(circle); circle = null; }
   if (youMarker){ map.removeLayer(youMarker); youMarker = null; }
   clearRouteLayer();
+  markersByIcao = {};   // reset here so drawRoute()'s dep/dest markers survive renderStations()
   if (scope === "route"){ drawRoute(); return; }
   if (!center) return;
   if (scope !== "region"){
@@ -1346,7 +1348,7 @@ function popupEl(s){
 
 function renderStations(){
   layer.clearLayers();
-  markersByIcao = {};
+  if (scope !== "route") markersByIcao = {};   // route mode: drawBase()/drawRoute() already reset it
   const arr = visibleStations();
   if (!arr.length){
     setStatus(lastStations.length ? "No stations match this filter." : `No reporting stations within ${radiusNm}nm.`);
@@ -1357,6 +1359,10 @@ function renderStations(){
   updateRibbon(arr);
   const maxH = Math.max(180, Math.round(map.getSize().y * 0.72));
   for (const s of arr){
+    // The departure/arrival airports already get their own D/A marker (with the same full
+    // weather popup) from drawRoute() — skip the normal dot here to avoid two overlapping
+    // labeled markers at the same spot.
+    if (scope === "route" && (s.routeRole === "dep" || s.routeRole === "dest")) continue;
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
     m._icao = s.icaoId; markersByIcao[s.icaoId] = m;
     m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
@@ -1764,10 +1770,6 @@ $("routeBtn").addEventListener("click", () => {
   $("routeBtn").classList.toggle("on", open);
   syncRadiusSeg();
   if (open) renderChips();
-});
-$("rpPlan").addEventListener("click", () => {
-  cancelIntro();
-  loadRoute();
 });
 $("rpClear").addEventListener("click", () => { route = []; renderChips(); clearRouteLayer(); });
 $("rpChips").addEventListener("click", e => {

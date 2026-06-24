@@ -52,7 +52,18 @@ function serveStatic(req, res) {
   if (!file.startsWith(__dirname)) { res.writeHead(403).end(); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404).end("Not found"); return; }
-    res.writeHead(200, { "Content-Type": TYPES[path.extname(file)] || "application/octet-stream" });
+    // index.html and the service worker must always be revalidated, otherwise different
+    // devices/browsers can get stuck on different cached app versions indefinitely (the
+    // service worker itself decides when to fetch a new version, so a stale HTTP cache of
+    // sw.js can hide updates from a tab for hours/days). Other assets can cache briefly.
+    const base = path.basename(file);
+    const cacheControl = (base === "index.html" || base === "sw.js")
+      ? "no-cache"
+      : "public, max-age=300";
+    res.writeHead(200, {
+      "Content-Type": TYPES[path.extname(file)] || "application/octet-stream",
+      "Cache-Control": cacheControl,
+    });
     res.end(data);
   });
 }
