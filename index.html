@@ -1010,6 +1010,9 @@ async function loadRoute(){
     const proj = buildRouteProj();
     const depId = route[0].id, destId = route[route.length-1].id;
     const widthNm = corridorWidthNm();   // 25/50/100, or 25 while Region/US is selected
+    // Show real weather a bit beyond the shaded corridor edge too (e.g. 100nm corridor → 125nm
+    // of METARs) — only for the explicit width buttons; Region/US already has its own near/far split.
+    const fetchWidthNm = region ? widthNm : widthNm + 25;
 
     // Every airport within the corridor, found ahead of time from the local airport index.
     // We then fetch METARs for these ids explicitly (in batches) rather than relying solely
@@ -1019,7 +1022,7 @@ async function loadRoute(){
     const nearMap = new Map();
     for (const a of allAirports){
       const r = routeDistAlong(a.lat, a.lon, proj);
-      if (r.perp <= widthNm) nearMap.set(a.icaoId, {lat:a.lat, lon:a.lon, dist:r.perp, along:r.along});
+      if (r.perp <= fetchWidthNm) nearMap.set(a.icaoId, {lat:a.lat, lon:a.lon, dist:r.perp, along:r.along});
     }
     for (const p of route){   // guarantee typed waypoints are covered even if missing from the index
       if (!nearMap.has(p.id)){
@@ -1055,7 +1058,7 @@ async function loadRoute(){
       far = gridThin(far, 0.9);
       stations = near.concat(far);
     } else {
-      stations = stations.filter(m => m.dist <= corridorNm);
+      stations = stations.filter(m => m.dist <= fetchWidthNm);
     }
     // Fill in every other airport along the corridor that has no current METAR.
     const haveIds = new Set(stations.map(s => s.icaoId));
