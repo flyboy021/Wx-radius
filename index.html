@@ -85,7 +85,7 @@
   #routePanel button.on{background:var(--accent,#2b6fff);color:#fff;border-color:transparent}
   #rpPlan{background:#11a911;color:#fff;border-color:transparent}
   .rp-note{color:var(--muted);font-size:12px}
-  .rp-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:4px}
+  .rp-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:4px;flex:1}
   .chip-wp{display:inline-flex;align-items:center;gap:5px;background:#1b2330;border:1px solid var(--line);
     border-radius:6px;padding:3px 4px 3px 8px;font-size:13px;font-weight:800}
   .chip-x{background:transparent;border:none;color:var(--muted);font-size:15px;line-height:1;
@@ -240,7 +240,7 @@
         <button data-r="25">25</button>
         <button data-r="50" class="on">50</button>
         <button data-r="100">100</button>
-        <button data-r="region">Region</button>
+        <button data-r="region" id="regionBtn">Region</button>
       </div>
       <button id="routeBtn" class="toggle" title="Plan weather along a route">Route</button>
       <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
@@ -259,18 +259,14 @@
   </header>
 
   <div id="routePanel" style="display:none">
-    <div id="rpChips" class="rp-chips"></div>
     <div class="rp-row">
-      <div class="seg" id="corridorSeg">
-        <button data-c="25">25</button>
-        <button data-c="50" class="on">50</button>
-        <button data-c="region" id="corRegionBtn">Region</button>
-      </div>
-      <span class="rp-note">nm each side</span>
-      <span class="spacer"></span>
+      <div id="rpChips" class="rp-chips"></div>
       <button id="rpTap" class="toggle" title="Tap airports on the map to add them">Tap to add</button>
       <button id="rpPlan">Plan ▸</button>
       <button id="rpClear" class="ghost">Clear</button>
+    </div>
+    <div class="rp-row">
+      <span class="rp-note">Use the radius buttons above for corridor width</span>
     </div>
   </div>
 
@@ -771,7 +767,10 @@ function stnLabelText(s){
   return s.icaoId;
 }
 function stationIcon(s){
-  const hideLabels = scope === "region" || (scope === "route" && corridorSel === "region");
+  // In Region/US route mode, only the sparse "wider area" stations lose their labels —
+  // stations within the 25nm route corridor stay fully labeled like normal route view.
+  const hideLabels = scope === "region"
+    || (scope === "route" && corridorSel === "region" && s.dist > REGION_NEAR_NM);
   const lbl = hideLabels ? "" : `<span class="lbl">${stnLabelText(s)}</span>`;
   return L.divIcon({className:"",
     html:`<div class="stn"><span class="pin" style="background:${catColor(s.fltCat)}"></span>${lbl}</div>`,
@@ -900,18 +899,35 @@ function destPoint(lat, lon, brg, distNm){
   const λ2=λ1+Math.atan2(Math.sin(θ)*Math.sin(δ)*Math.cos(φ1), Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2));
   return [φ2*180/Math.PI, λ2*180/Math.PI];
 }
-function corridorPolygon(){
+// Width (nm) of the route corridor shown on the map / used to filter "near route" stations.
+// While "Region"/"US" is selected, the corridor is fixed at 25nm — the wider region is
+// covered separately by a sparser grid-thinned set of stations (see loadRoute).
+const REGION_NEAR_NM = 25;
+function corridorWidthNm(){ return corridorSel === "region" ? REGION_NEAR_NM : corridorNm; }
+// Arc of points swept `sweep` degrees (clockwise) from `startBrg`, centered on `center`.
+function arcPoints(center, startBrg, sweep, n, radiusNm){
+  const pts=[];
+  for (let i=0;i<=n;i++) pts.push(destPoint(center[0], center[1], (startBrg + sweep*(i/n) + 360) % 360, radiusNm));
+  return pts;
+}
+function corridorPolygon(widthNm){
   if (route.length < 2) return null;
+  if (widthNm == null) widthNm = corridorWidthNm();
   const path=[];
   for (let i=0;i<route.length-1;i++){ const seg=gcInterpolate(route[i],route[i+1],24); if (i>0) seg.shift(); path.push(...seg); }
-  const left=[], right=[];
+  const left=[], right=[], brgs=[];
   for (let i=0;i<path.length;i++){
     const a=path[Math.max(0,i-1)], b=path[Math.min(path.length-1,i+1)];
     const brg=bearingDeg(a[0],a[1],b[0],b[1]);
-    left.push(destPoint(path[i][0], path[i][1], (brg-90+360)%360, corridorNm));
-    right.push(destPoint(path[i][0], path[i][1], (brg+90)%360, corridorNm));
+    brgs.push(brg);
+    left.push(destPoint(path[i][0], path[i][1], (brg-90+360)%360, widthNm));
+    right.push(destPoint(path[i][0], path[i][1], (brg+90)%360, widthNm));
   }
-  return left.concat(right.reverse());
+  const brgStart = brgs[0], brgEnd = brgs[brgs.length-1];
+  // Half-circle caps at the arrival (bulging ahead) and departure (bulging behind) ends.
+  const endCap = arcPoints(path[path.length-1], (brgEnd-90+360)%360, 180, 16, widthNm);
+  const startCap = arcPoints(path[0], (brgStart+90)%360, 180, 16, widthNm);
+  return left.concat(endCap.slice(1), right.slice().reverse().slice(1), startCap.slice(1));
 }
 // Keep one station per ~cell° grid cell (for the wider-area "Region" view).
 function gridThin(arr, cell){
@@ -939,7 +955,7 @@ function drawRoute(){
   clearRouteLayer();
   if (!route.length) return;
   routeLayer = L.layerGroup().addTo(map);
-  if (route.length >= 2 && corridorSel !== "region"){
+  if (route.length >= 2){
     const poly = corridorPolygon();
     if (poly) L.polygon(poly, {color:"#ffd23f", weight:1, opacity:.35,
       fillColor:"#ffd23f", fillOpacity:.07, interactive:false}).addTo(routeLayer);
@@ -981,14 +997,14 @@ async function loadRoute(){
     const proj = buildRouteProj();
     const depId = route[0].id, destId = route[route.length-1].id;
     let stations = metars.map(m=>{
-      const r = routeDistAlong(m.lat, m.lon, proj, region ? 0 : corridorNm);
+      const r = routeDistAlong(m.lat, m.lon, proj, region ? REGION_NEAR_NM : corridorNm);
       return {...m, taf: tafById[m.icaoId]||null, dist:r.perp, along:r.along,
         routeRole: m.icaoId===depId ? "dep" : (m.icaoId===destId ? "dest" : null)};
     });
     if (region){
-      // full detail within 50 nm of the route, sampled coverage of the wider area
-      const near = stations.filter(m => m.dist <= 50);
-      let far = stations.filter(m => m.dist > 50).sort((a,b)=> a.dist - b.dist);
+      // full detail within 25 nm of the route, sampled coverage of the wider US/region area
+      const near = stations.filter(m => m.dist <= REGION_NEAR_NM);
+      let far = stations.filter(m => m.dist > REGION_NEAR_NM).sort((a,b)=> a.dist - b.dist);
       far = gridThin(far, 0.9);
       stations = near.concat(far);
     } else {
@@ -997,8 +1013,8 @@ async function loadRoute(){
     stations.sort((a,b)=> a.along - b.along);   // behind departure → past destination
     lastStations = stations;
     drawBase();
-    if (region) map.fitBounds(boxToBounds(regionBox(center)), {padding:[20,20]});
-    else map.fitBounds(routeBoundsLL(), {padding:[34,34]});
+    // Keep the route in view even in Region/US mode — don't pan out to the wider box.
+    map.fitBounds(routeBoundsLL(), {padding:[34,34]});
     renderStations(); renderList();
     setTimeout(()=>map.invalidateSize(), 80);
     if (lastStations[0]) updateFavicon(lastStations[0].fltCat);
@@ -1007,13 +1023,23 @@ async function loadRoute(){
   }catch(e){ setStatus(e.message || "Could not load route", true); }
 }
 // ---- waypoint management ----
+// The 25/50/100/Region buttons above the search box double as the route
+// corridor-width control while the route panel is open.
+function inRouteMode(){ return $("routePanel").style.display !== "none"; }
+function syncRadiusSeg(){
+  const seg = $("radiusSeg"); if (!seg) return;
+  const routeMode = inRouteMode();
+  const val = routeMode ? corridorSel : (scope === "region" ? "region" : String(radiusNm));
+  [...seg.children].forEach(b => b.classList.toggle("on", b.dataset.r === val));
+  const rb = $("regionBtn"); if (rb) rb.textContent = routeMode ? regionBtnLabel(route[0]) : "Region";
+}
 function renderChips(){
   const el=$("rpChips"); if (!el) return;
   el.innerHTML = route.map((p,i)=>
     `<span class="chip-wp"><b>${p.id}</b><button data-i="${i}" class="chip-x" title="Remove">×</button></span>`
     + (i<route.length-1 ? `<span class="chip-arrow">→</span>` : "")
   ).join("");
-  const rb = $("corRegionBtn"); if (rb) rb.textContent = regionBtnLabel(route[0]);
+  syncRadiusSeg();
 }
 function addWaypoint(wp){
   if (route.length && route[route.length-1].id === wp.id) return;  // no dup in a row
@@ -1601,6 +1627,7 @@ $("go").addEventListener("click", async () => {
     await addWaypointsFromText(raw);
     $("routePanel").style.display = "block";
     $("routeBtn").classList.add("on");
+    syncRadiusSeg();
     if (route.length >= 2) loadRoute(); else setStatus("");
     return;
   }
@@ -1615,9 +1642,16 @@ $("radarBtn").addEventListener("click", toggleRadar);
 
 $("radiusSeg").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
-  [...$("radiusSeg").children].forEach(x => x.classList.toggle("on", x === b));
+  if (inRouteMode()){
+    corridorSel = b.dataset.r;
+    if (corridorSel !== "region") corridorNm = Number(corridorSel);
+    syncRadiusSeg();
+    if (route.length >= 2) loadRoute(); else drawRoute();
+    return;
+  }
   if (b.dataset.r === "region"){ scope = "region"; }
   else { scope = "local"; radiusNm = Number(b.dataset.r); }
+  syncRadiusSeg();
   if (center) load(center);
 });
 // Reopened after being away a while: refresh the weather, but don't replay the intro.
@@ -1652,6 +1686,7 @@ $("routeBtn").addEventListener("click", () => {
   const p = $("routePanel"), open = p.style.display === "none";
   p.style.display = open ? "block" : "none";
   $("routeBtn").classList.toggle("on", open);
+  syncRadiusSeg();
   if (open){ renderChips(); }
   else if (addMode){ addMode = false; $("rpTap").classList.remove("on"); renderStations(); }
 });
@@ -1660,13 +1695,6 @@ $("rpTap").addEventListener("click", () => {
   $("rpTap").classList.toggle("on", addMode);
   setStatus(addMode ? "Tap airports on the map to add them to your route." : "");
   renderStations();
-});
-$("corridorSeg").addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b) return;
-  [...$("corridorSeg").children].forEach(x => x.classList.toggle("on", x === b));
-  corridorSel = b.dataset.c;
-  if (corridorSel !== "region") corridorNm = Number(corridorSel);
-  if (scope === "route" && route.length >= 2) loadRoute();
 });
 $("rpPlan").addEventListener("click", () => {
   cancelIntro();
