@@ -1064,13 +1064,6 @@ async function loadRoute(){
     } else {
       stations = stations.filter(m => m.dist <= fetchWidthNm);
     }
-    // Fill in every other airport along the corridor that has no current METAR.
-    const haveIds = new Set(stations.map(s => s.icaoId));
-    for (const [id, a] of nearMap){
-      if (haveIds.has(id)) continue;
-      stations.push({icaoId:id, lat:a.lat, lon:a.lon, dist:a.dist, along:a.along,
-        fltCat:null, noWx:true, routeRole: id===depId ? "dep" : (id===destId ? "dest" : null)});
-    }
     stations.sort((a,b)=> a.along - b.along);   // behind departure → past destination
     // Departure's own METAR leads, then arrival's, then the rest of the route in order.
     const dep = stations.find(s => s.routeRole === "dep");
