@@ -713,7 +713,7 @@ async function geocode(idRaw){
   if (id.length === 3 && /^[A-Z0-9]+$/.test(id) && id[0] !== "K") candidates.push("K" + id);
   for (const c of candidates){
     const hit = await lookupId(c);
-    if (hit) return hit;
+    if (hit) return {...hit, id: c};   // resolved id (e.g. "AFW" → "KAFW"), not just what was typed
   }
   throw new Error(`Airport "${id}" not found`);
 }
@@ -1115,7 +1115,7 @@ function addWaypoint(wp){
 async function addWaypointsFromText(txt){
   const ids = (txt||"").trim().toUpperCase().split(/[\s,]+/).filter(Boolean);
   for (const id of ids){
-    try{ const hit = await geocode(id); addWaypoint({id, lat:hit.lat, lon:hit.lon, name:(hit.name||"").trim()}); }
+    try{ const hit = await geocode(id); addWaypoint({id: hit.id, lat:hit.lat, lon:hit.lon, name:(hit.name||"").trim()}); }
     catch(e){ setStatus(`"${id}" not found`, true); }
   }
 }
