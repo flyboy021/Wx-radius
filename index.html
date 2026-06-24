@@ -999,15 +999,22 @@ async function loadRoute(){
   try{
     const [s,w,n,e] = region ? regionBox(center) : routeBbox();
     const box = `${s},${w},${n},${e}`;
-    const [metars, , tafs] = await Promise.all([
+    const wpIds = route.map(p => p.id).join(",");
+    const [metars, , tafs, wpMetars] = await Promise.all([
       getJson(`${API}/metar?bbox=${box}&format=json`),
       loadAtisAll(),
-      getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[])
+      getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[]),
+      // The bbox query can silently omit a waypoint's own METAR (e.g. when it's a smaller
+      // field near a busier one) — fetch the route's own airports by id to guarantee they
+      // always show real weather when it exists, instead of falling back to "no data".
+      getJson(`${API}/metar?ids=${wpIds}&format=json`).catch(()=>[])
     ]);
     const tafById={}; for (const t of tafs) tafById[t.icaoId]=t;
     const proj = buildRouteProj();
     const depId = route[0].id, destId = route[route.length-1].id;
-    let stations = metars.map(m=>{
+    const byId = new Map(metars.map(m => [m.icaoId, m]));
+    for (const m of wpMetars) if (!byId.has(m.icaoId)) byId.set(m.icaoId, m);
+    let stations = [...byId.values()].map(m=>{
       const r = routeDistAlong(m.lat, m.lon, proj, region ? REGION_NEAR_NM : corridorNm);
       return {...m, taf: tafById[m.icaoId]||null, dist:r.perp, along:r.along,
         routeRole: m.icaoId===depId ? "dep" : (m.icaoId===destId ? "dest" : null)};
