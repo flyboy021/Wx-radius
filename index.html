@@ -405,7 +405,7 @@ function relHum(t, td){
 }
 function fmtAlt(s){ return s.altim != null ? `${(s.altim*0.0295299830714).toFixed(2)}" Hg` : "—"; }
 function cOrF(c){ return tempUnit === "F" ? `<span class="raw-time">${Math.round(c*9/5+32)}°F</span>` : `${Math.round(c)}°C`; }
-function fmtTemp(s){ return s.temp != null ? `${cOrF(s.temp)} <b>Dew</b> ${cOrF(s.dewp)}` : "—"; }
+function fmtTemp(s){ return s.temp != null ? `${cOrF(s.temp)} <b>Dew</b> ${s.dewp != null ? cOrF(s.dewp) : "—"}` : "—"; }
 function cToF(tok){ const v = tok[0] === "M" ? -parseInt(tok.slice(1),10) : parseInt(tok,10); return Math.round(v*9/5+32); }
 
 function decodedGrid(s){
@@ -448,7 +448,8 @@ function highlightRaw(raw, col, obsTime, tz){
   html = html.replace(/\b\d{6}Z\b/, (m) =>
     (timeMode === "local" && obsTime) ? `<span class="raw-time">${localStamp(obsTime, tz)}</span>` : m);
   if (tempUnit === "F")
-    html = html.replace(/\b(M?\d{2})\/(M?\d{2})\b/, (m,t,d) => `<span class="raw-time">${cToF(t)}/${cToF(d)}°F</span>`);
+    // Dewpoint can be missing (e.g. "18/" when the sensor has no reading) — still convert the temp.
+    html = html.replace(/\b(M?\d{2})\/(M?\d{2})?(?=\s|$)/, (m,t,d) => `<span class="raw-time">${cToF(t)}/${d ? cToF(d) : ""}°F</span>`);
   return html;
 }
 // Break a raw TAF into readable forecast lines.
@@ -863,19 +864,26 @@ function buildRouteProj(){
   return {segs, xy, total:cum};
 }
 // Cross-track (perp) and along-track distance of a point vs the route.
-function routeDistAlong(lat, lon, proj, ext){
-  ext = ext || 0;
+// `perp` always measures to the nearest point on the route OR straight-line to the departure/
+// arrival airport — a true circle of radius corridorNm around each end, matching the rounded
+// caps drawn on the map (no off-axis "beyond the corridor width" gaps or stretching).
+// `along` is allowed to extrapolate past the route's ends so "N nm before dep"/"past dest" labels
+// still make sense, without distorting the cross-track distance used for filtering.
+function routeDistAlong(lat, lon, proj){
   const P = proj.xy({lat,lon});
   const n = proj.segs.length;
   let best = {perp:Infinity, along:0};
   proj.segs.forEach((s, i) => {
     const dx=s.B[0]-s.A[0], dy=s.B[1]-s.A[1], len2=dx*dx+dy*dy, len=Math.sqrt(len2);
-    let t = len2 ? ((P[0]-s.A[0])*dx + (P[1]-s.A[1])*dy)/len2 : 0;
-    const lo = (i === 0 && len) ? -ext/len : 0;            // allow behind the departure
-    const hi = (i === n-1 && len) ? 1 + ext/len : 1;       // allow past the destination
-    t = Math.max(lo, Math.min(hi, t));
+    const tRaw = len2 ? ((P[0]-s.A[0])*dx + (P[1]-s.A[1])*dy)/len2 : 0;
+    const t = Math.max(0, Math.min(1, tRaw));
     const cx=s.A[0]+t*dx, cy=s.A[1]+t*dy, perp=Math.hypot(P[0]-cx, P[1]-cy);
-    if (perp < best.perp) best = {perp, along: s.cum + t*len};
+    if (perp < best.perp){
+      let alongT = tRaw;
+      if (i > 0) alongT = Math.max(0, alongT);        // only the first leg extrapolates backward
+      if (i < n-1) alongT = Math.min(1, alongT);       // only the last leg extrapolates forward
+      best = {perp, along: s.cum + alongT*len};
+    }
   });
   return best;
 }
@@ -948,7 +956,7 @@ function regionBtnLabel(loc){
 }
 function clearRouteLayer(){ if (routeLayer){ map.removeLayer(routeLayer); routeLayer=null; } }
 function wpIcon(id, role){
-  const bg = role==="dep" ? "#11a911" : role==="dest" ? "#e0152b" : "#ffd23f";
+  const bg = role==="dep" ? "#11a911" : role==="dest" ? "#ff8c00" : "#ffd23f";
   const fg = role==="via" ? "#1a1f29" : "#fff";
   return L.divIcon({className:"", iconSize:[80,22], iconAnchor:[11,11],
     html:`<div class="wp"><span class="wp-dot" style="background:${bg};color:${fg}">${role==="via"?"":(role==="dep"?"D":"A")}</span><span class="wp-lbl">${id}</span></div>`});
@@ -1017,7 +1025,7 @@ async function loadRoute(){
     const byId = new Map(metars.map(m => [m.icaoId, m]));
     for (const m of wpMetars) if (!byId.has(m.icaoId)) byId.set(m.icaoId, m);
     let stations = [...byId.values()].map(m=>{
-      const r = routeDistAlong(m.lat, m.lon, proj, region ? REGION_NEAR_NM : corridorNm);
+      const r = routeDistAlong(m.lat, m.lon, proj);
       return {...m, taf: tafById[m.icaoId]||null, dist:r.perp, along:r.along,
         routeRole: m.icaoId===depId ? "dep" : (m.icaoId===destId ? "dest" : null)};
     });
@@ -1037,7 +1045,7 @@ async function loadRoute(){
       const haveIds = new Set(stations.map(s => s.icaoId));
       for (const a of allAirports){
         if (haveIds.has(a.icaoId)) continue;
-        const r = routeDistAlong(a.lat, a.lon, proj, widthNm);
+        const r = routeDistAlong(a.lat, a.lon, proj);
         if (r.perp <= widthNm){
           stations.push({icaoId:a.icaoId, lat:a.lat, lon:a.lon, dist:r.perp, along:r.along,
             fltCat:null, noWx:true, routeRole: a.icaoId===depId ? "dep" : (a.icaoId===destId ? "dest" : null)});
