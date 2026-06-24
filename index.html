@@ -75,6 +75,7 @@
   .rb-near{color:var(--muted);font-weight:600;flex:none}
   .rb-near b{font-weight:800;margin-right:3px}
   .rb-ok{color:var(--vfr);font-weight:700}
+  .rb-vnr{color:var(--lifr);font-weight:800}
   #routePanel{background:var(--panel);border-bottom:1px solid var(--line);padding:8px 12px;
     display:flex;flex-direction:column;gap:8px}
   .rp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -794,6 +795,7 @@ function updateRouteRibbon(arr){
   let worst = null;
   for (const s of arr) if (!worst || (order[s.fltCat]||0) > (order[worst]||0)) worst = s.fltCat;
   let html = worst ? `<span class="rb-chip"><span class="rb-dot" style="background:${catColor(worst)}"></span>Worst on route: ${worst}</span>` : "";
+  if (worst === "IFR" || worst === "LIFR") html += `<span class="rb-vnr">VFR flight not recommended</span>`;
   const bad = arr.find(s => s.fltCat === "IFR" || s.fltCat === "LIFR");
   if (bad){
     const where = bad.along < 0 ? "before dep" : `${fmtDist(bad.along)} in`;
