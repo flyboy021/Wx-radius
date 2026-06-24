@@ -262,7 +262,6 @@
   <div id="routePanel" style="display:none">
     <div class="rp-row">
       <div id="rpChips" class="rp-chips"></div>
-      <button id="rpTap" class="toggle" title="Tap airports on the map to add them">Tap to add</button>
       <button id="rpPlan">Plan ▸</button>
       <button id="rpClear" class="ghost">Clear</button>
     </div>
@@ -344,7 +343,6 @@ let centerTz = null;    // timezone of the area currently being viewed
 let route = [];          // [{id,lat,lon,name}] ordered waypoints
 let corridorNm = 50;     // 25 / 50 nm each side of the route line
 let corridorSel = "50";  // "25" | "50" | "region"
-let addMode = false;     // tap-airports-on-map mode
 
 // ---- geo helpers --------------------------------------------------------
 const toRad = d => d * Math.PI / 180;
@@ -770,9 +768,10 @@ function stnLabelText(s){
 }
 function stationIcon(s){
   // In Region/US route mode, only the sparse "wider area" stations lose their labels —
-  // stations within the 25nm route corridor stay fully labeled like normal route view.
+  // stations within the route corridor (same width as the 25/50/100 buttons) stay fully
+  // labeled like normal route view.
   const hideLabels = scope === "region"
-    || (scope === "route" && corridorSel === "region" && s.dist > REGION_NEAR_NM);
+    || (scope === "route" && corridorSel === "region" && s.dist > corridorNm);
   const lbl = hideLabels ? "" : `<span class="lbl">${stnLabelText(s)}</span>`;
   return L.divIcon({className:"",
     html:`<div class="stn"><span class="pin" style="background:${catColor(s.fltCat)}"></span>${lbl}</div>`,
@@ -910,10 +909,10 @@ function destPoint(lat, lon, brg, distNm){
   return [φ2*180/Math.PI, λ2*180/Math.PI];
 }
 // Width (nm) of the route corridor shown on the map / used to filter "near route" stations.
-// While "Region"/"US" is selected, the corridor is fixed at 25nm — the wider region is
-// covered separately by a sparser grid-thinned set of stations (see loadRoute).
-const REGION_NEAR_NM = 25;
-function corridorWidthNm(){ return corridorSel === "region" ? REGION_NEAR_NM : corridorNm; }
+// This is always whatever the 25/50/100 buttons last set (corridorNm) — selecting "Region"/"US"
+// does not shrink the corridor, it only adds a sparser grid-thinned overlay of the wider area
+// outside that corridor (see loadRoute).
+function corridorWidthNm(){ return corridorNm; }
 // Arc of points swept `sweep` degrees (clockwise) from `startBrg`, centered on `center`.
 function arcPoints(center, startBrg, sweep, n, radiusNm){
   const pts=[];
@@ -955,8 +954,11 @@ function regionBtnLabel(loc){
   return "Region";
 }
 function clearRouteLayer(){ if (routeLayer){ map.removeLayer(routeLayer); routeLayer=null; } }
-function wpIcon(id, role){
-  const bg = role==="dep" ? "#11a911" : role==="dest" ? "#ff8c00" : "#ffd23f";
+function wpIcon(id, role, fltCat){
+  // Default green (dep) / orange (dest) only when there's no METAR yet — once we know the
+  // actual flight category, the marker shows that color instead (e.g. red for IFR).
+  const fallback = role==="dep" ? "#11a911" : role==="dest" ? "#ff8c00" : "#ffd23f";
+  const bg = (role!=="via" && fltCat) ? catColor(fltCat) : fallback;
   const fg = role==="via" ? "#1a1f29" : "#fff";
   return L.divIcon({className:"", iconSize:[80,22], iconAnchor:[11,11],
     html:`<div class="wp"><span class="wp-dot" style="background:${bg};color:${fg}">${role==="via"?"":(role==="dep"?"D":"A")}</span><span class="wp-lbl">${id}</span></div>`});
@@ -981,7 +983,9 @@ function drawRoute(){
   }
   route.forEach((p,i)=>{
     const role = i===0 ? "dep" : (i===route.length-1 ? "dest" : "via");
-    L.marker([p.lat,p.lon], {icon:wpIcon(p.id, role), zIndexOffset:900})
+    const st = lastStations.find(s => s.icaoId === p.id);
+    const fltCat = (st && !st.noWx) ? st.fltCat : null;
+    L.marker([p.lat,p.lon], {icon:wpIcon(p.id, role, fltCat), zIndexOffset:900})
       .addTo(routeLayer).bindPopup(`${p.id}${p.name?" · "+p.name:""}`);
   });
 }
@@ -1009,10 +1013,9 @@ async function loadRoute(){
   try{
     const proj = buildRouteProj();
     const depId = route[0].id, destId = route[route.length-1].id;
-    const widthNm = corridorWidthNm();   // 25/50/100, or 25 while Region/US is selected
-    // Show real weather a bit beyond the shaded corridor edge too (e.g. 100nm corridor → 125nm
-    // of METARs) — only for the explicit width buttons; Region/US already has its own near/far split.
-    const fetchWidthNm = region ? widthNm : widthNm + 25;
+    const widthNm = corridorWidthNm();   // same corridor width regardless of Region/US
+    // Show real weather a bit beyond the shaded corridor edge too (e.g. 100nm corridor → 125nm).
+    const fetchWidthNm = widthNm + 25;
 
     // Every airport within the corridor, found ahead of time from the local airport index.
     // We then fetch METARs for these ids explicitly (in batches) rather than relying solely
@@ -1052,9 +1055,9 @@ async function loadRoute(){
         routeRole: m.icaoId===depId ? "dep" : (m.icaoId===destId ? "dest" : null)};
     });
     if (region){
-      // full detail within 25 nm of the route, sampled coverage of the wider US/region area
-      const near = stations.filter(m => m.dist <= REGION_NEAR_NM);
-      let far = stations.filter(m => m.dist > REGION_NEAR_NM).sort((a,b)=> a.dist - b.dist);
+      // full detail within the corridor, sampled coverage of the wider US/region area beyond it
+      const near = stations.filter(m => m.dist <= fetchWidthNm);
+      let far = stations.filter(m => m.dist > fetchWidthNm).sort((a,b)=> a.dist - b.dist);
       far = gridThin(far, 0.9);
       stations = near.concat(far);
     } else {
@@ -1356,12 +1359,8 @@ function renderStations(){
   for (const s of arr){
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
     m._icao = s.icaoId; markersByIcao[s.icaoId] = m;
-    if (addMode){
-      m.on("click", () => addWaypoint({id:s.icaoId, lat:s.lat, lon:s.lon, name:(s.name||"").trim()}));
-    } else {
-      m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
-      if (canHover) m.on("mouseover", () => m.openPopup());   // hover on desktop; single tap on touch
-    }
+    m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
+    if (canHover) m.on("mouseover", () => m.openPopup());   // hover on desktop; single tap on touch
   }
 }
 
@@ -1426,12 +1425,6 @@ function setViewMode(mode){
   const b = $("listBtn");
   b.textContent = mode === "map" ? "List" : "Map";
   b.classList.toggle("on", mode === "list");
-  // "Tap to add" only makes sense while the map is actually visible.
-  const tap = $("rpTap");
-  if (tap){
-    tap.style.display = mode === "map" ? "" : "none";
-    if (mode === "list" && addMode){ addMode = false; tap.classList.remove("on"); setStatus(""); }
-  }
   if (mode === "map") setTimeout(() => map.invalidateSize(), 60);
 }
 
@@ -1770,18 +1763,10 @@ $("routeBtn").addEventListener("click", () => {
   p.style.display = open ? "block" : "none";
   $("routeBtn").classList.toggle("on", open);
   syncRadiusSeg();
-  if (open){ renderChips(); }
-  else if (addMode){ addMode = false; $("rpTap").classList.remove("on"); renderStations(); }
-});
-$("rpTap").addEventListener("click", () => {
-  addMode = !addMode;
-  $("rpTap").classList.toggle("on", addMode);
-  setStatus(addMode ? "Tap airports on the map to add them to your route." : "");
-  renderStations();
+  if (open) renderChips();
 });
 $("rpPlan").addEventListener("click", () => {
   cancelIntro();
-  if (addMode){ addMode = false; $("rpTap").classList.remove("on"); }
   loadRoute();
 });
 $("rpClear").addEventListener("click", () => { route = []; renderChips(); clearRouteLayer(); });
