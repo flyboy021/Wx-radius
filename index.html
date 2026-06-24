@@ -976,6 +976,17 @@ function drawRoute(){
   });
 }
 function routeBoundsLL(){ return route.map(p=>[p.lat,p.lon]); }
+// Lightweight id/lat/lon index of every public airport (not just METAR-reporting ones),
+// used so the route corridor shows every airport along it, with or without current weather.
+let airportsAll = null, airportsLoading = null;
+function loadAirportsIndex(){
+  if (airportsAll) return Promise.resolve(airportsAll);
+  if (airportsLoading) return airportsLoading;
+  airportsLoading = fetch("airports.json").then(r => r.json())
+    .then(arr => airportsAll = arr.map(a => ({icaoId:a[0], lat:a[1], lon:a[2]})))
+    .catch(() => airportsAll = []);
+  return airportsLoading;
+}
 async function loadRoute(){
   if (route.length < 2){ setStatus("Add at least two waypoints to plan a route.", true); return; }
   scope = "route";
@@ -1010,7 +1021,27 @@ async function loadRoute(){
     } else {
       stations = stations.filter(m => m.dist <= corridorNm);
     }
+    // Fill in every other airport along the corridor, even ones with no current METAR.
+    try{
+      const widthNm = corridorWidthNm();
+      const allAirports = await loadAirportsIndex();
+      const haveIds = new Set(stations.map(s => s.icaoId));
+      for (const a of allAirports){
+        if (haveIds.has(a.icaoId)) continue;
+        const r = routeDistAlong(a.lat, a.lon, proj, widthNm);
+        if (r.perp <= widthNm){
+          stations.push({icaoId:a.icaoId, lat:a.lat, lon:a.lon, dist:r.perp, along:r.along,
+            fltCat:null, noWx:true, routeRole: a.icaoId===depId ? "dep" : (a.icaoId===destId ? "dest" : null)});
+          haveIds.add(a.icaoId);
+        }
+      }
+    }catch(e){ /* no-METAR airport overlay is best-effort */ }
     stations.sort((a,b)=> a.along - b.along);   // behind departure → past destination
+    // Departure's own METAR leads, then arrival's, then the rest of the route in order.
+    const dep = stations.find(s => s.routeRole === "dep");
+    const dest = stations.find(s => s.routeRole === "dest");
+    const rest = stations.filter(s => s !== dep && s !== dest);
+    stations = [dep, dest, ...rest].filter(Boolean);
     lastStations = stations;
     drawBase();
     // Keep the route in view even in Region/US mode — don't pan out to the wider box.
@@ -1261,6 +1292,13 @@ function metarBoxHtml(s, pillLeft){
 function popupEl(s){
   const el = document.createElement("div");
   el.className = "pop";
+  if (s.noWx){
+    el.innerHTML = `
+      <div class="pop-h"><span class="pop-id">${s.icaoId}</span>${roleBadge(s)}</div>
+      <div class="pop-name">${distLabel(s)}</div>
+      <div class="metarbox"><div class="age">No current weather report</div></div>`;
+    return el;
+  }
   const taf = s.taf;
   el.innerHTML = `
     <div class="pop-h"><span class="pop-id">${s.icaoId}</span>${roleBadge(s)}</div>
@@ -1301,6 +1339,14 @@ function cardEl(s){
   const card = document.createElement("div");
   card.className = "card";
   card.style.borderLeftColor = catColor(s.fltCat);
+  if (s.noWx){
+    card.innerHTML = `
+      <div class="body">
+        <div class="hdr"><span class="id">${s.icaoId}</span>${roleBadge(s)}<span class="dist">${distLabel(s)}</span></div>
+        <div class="metarbox"><div class="age">No current weather report</div></div>
+      </div>`;
+    return card;
+  }
   const taf = s.taf;
   card.innerHTML = `
     <div class="body">
@@ -1349,6 +1395,12 @@ function setViewMode(mode){
   const b = $("listBtn");
   b.textContent = mode === "map" ? "List" : "Map";
   b.classList.toggle("on", mode === "list");
+  // "Tap to add" only makes sense while the map is actually visible.
+  const tap = $("rpTap");
+  if (tap){
+    tap.style.display = mode === "map" ? "" : "none";
+    if (mode === "list" && addMode){ addMode = false; tap.classList.remove("on"); setStatus(""); }
+  }
   if (mode === "map") setTimeout(() => map.invalidateSize(), 60);
 }
 
