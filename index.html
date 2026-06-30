@@ -63,9 +63,9 @@
   #radarBtn{display:inline-flex;align-items:center;gap:5px}
   #map{flex:1;min-height:0;width:100%;background:#0a0e14}
   #list{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
-  .legend{display:flex;align-items:center;gap:14px;background:var(--panel);padding:6px 12px;flex-wrap:wrap}
-  .legend .item{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--muted)}
-  .dot{width:12px;height:12px;border-radius:50%}
+  .legend{display:inline-flex;align-items:center;gap:8px;vertical-align:middle;margin-right:8px}
+  .legend .item{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%}
   #ribbon{display:none;align-items:center;gap:12px;justify-content:space-between;
     background:var(--panel);border-bottom:1px solid var(--line);padding:6px 12px;
     font-size:12px;overflow-x:auto;white-space:nowrap;flex:none}
@@ -179,6 +179,17 @@
   .disc{color:#6b7a8d;font-size:10px;flex:1}
   .tip{background:#ffb400;color:#1a1100;border:0;border-radius:8px;padding:9px 14px;
     font-weight:800;font-size:13px;white-space:nowrap}
+  .cogwrap{position:relative;flex:none}
+  #cogBtn{background:transparent;border:0;color:var(--txt);padding:4px;border-radius:8px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer}
+  #cogBtn:hover{background:#ffffff14}
+  #settingsPanel{position:absolute;top:calc(100% + 8px);right:0;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;padding:12px;min-width:220px;
+    box-shadow:0 10px 30px #000a;z-index:1200}
+  #settingsPanel .set-row{display:flex;align-items:center;justify-content:space-between;
+    gap:10px;padding:6px 2px}
+  #settingsPanel .set-label{font-size:13px;color:var(--txt)}
+  #settingsPanel .tip{width:100%;text-align:center;margin-top:8px}
   .radar-time{background:rgba(13,17,23,.85);color:#cdd6e0;font-size:12px;font-weight:700;
     padding:5px 8px;border-radius:6px;font-variant-numeric:tabular-nums;line-height:1.4}
   .radar-scale{display:flex;align-items:center;margin-bottom:3px}
@@ -219,6 +230,21 @@
         <span id="clockhint"></span>
       </div>
       <span class="spacer"></span>
+      <div class="cogwrap">
+        <button id="cogBtn" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 13a7.97 7.97 0 0 0 0-2l2.04-1.58a.5.5 0 0 0 .12-.64l-1.93-3.34a.5.5 0 0 0-.6-.22l-2.4.97a8 8 0 0 0-1.73-1l-.36-2.55a.5.5 0 0 0-.5-.43h-3.86a.5.5 0 0 0-.5.43l-.36 2.55a8 8 0 0 0-1.73 1l-2.4-.97a.5.5 0 0 0-.6.22L2.66 8.78a.5.5 0 0 0 .12.64L4.82 11a7.97 7.97 0 0 0 0 2l-2.04 1.58a.5.5 0 0 0-.12.64l1.93 3.34a.5.5 0 0 0 .6.22l2.4-.97a8 8 0 0 0 1.73 1l.36 2.55a.5.5 0 0 0 .5.43h3.86a.5.5 0 0 0 .5-.43l.36-2.55a8 8 0 0 0 1.73-1l2.4.97a.5.5 0 0 0 .6-.22l1.93-3.34a.5.5 0 0 0-.12-.64L19.4 13z"/>
+          </svg>
+        </button>
+        <div id="settingsPanel" style="display:none">
+          <div class="set-row">
+            <span class="set-label">Skip opening sequence</span>
+            <button id="skipIntroPref" class="toggle" title="Skip the opening intro animation on startup">Off</button>
+          </div>
+          <button id="tip" class="tip">☕ Tip the dev</button>
+        </div>
+      </div>
     </div>
     <div id="where" class="sub">Locating…</div>
     <div class="search">
@@ -271,23 +297,22 @@
   <div id="ribbon"></div>
   <div id="map"></div>
 
-  <div class="legend">
-    <span class="item"><span class="dot" style="background:var(--vfr)"></span>VFR</span>
-    <span class="item"><span class="dot" style="background:var(--mvfr)"></span>MVFR</span>
-    <span class="item"><span class="dot" style="background:var(--ifr)"></span>IFR</span>
-    <span class="item"><span class="dot" style="background:var(--lifr)"></span>LIFR</span>
-  </div>
-
   <div id="status"></div>
   <div id="list" style="display:none"></div>
 
   <footer>
     <div class="foot-left">
       <span id="updated" class="sub"></span>
-      <span class="disc">Situational awareness only — not an official weather briefing.
+      <span class="disc">
+        <span class="legend">
+          <span class="item"><span class="dot" style="background:var(--vfr)"></span>VFR</span>
+          <span class="item"><span class="dot" style="background:var(--mvfr)"></span>MVFR</span>
+          <span class="item"><span class="dot" style="background:var(--ifr)"></span>IFR</span>
+          <span class="item"><span class="dot" style="background:var(--lifr)"></span>LIFR</span>
+        </span>
+        Situational awareness only — not an official weather briefing.
         Data: FAA Aviation Weather Center · Radar: RainViewer.</span>
     </div>
-    <button id="tip" class="tip">☕ Tip the dev</button>
   </footer>
 
   <div id="timeWarn" class="modal" style="display:none">
@@ -1579,6 +1604,14 @@ function regionName(loc){
 }
 function boxToBounds(box){ return [[box[0], box[1]], [box[2], box[3]]]; }
 async function startup(){
+  if (getSkipIntroPref()){
+    cancelIntro();
+    setStatus("Finding your location…");
+    const loc = await getLocation().catch(() => null);
+    if (loc){ gpsOk = true; locValue = loc; await load(loc); }
+    else setStatus("Turn on location, or search an airport above.", true);
+    return;
+  }
   const skip = $("skipBtn"); if (skip) skip.style.display = "";
   setStatus("Finding your location…");
   const loc = await getLocation().catch(() => null);
@@ -1723,6 +1756,27 @@ $("skipBtn").addEventListener("click", skipIntro);
 $("q").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
 $("gps").addEventListener("click", useMyLocation);
 $("tip").addEventListener("click", () => window.open(TIP_URL, "_blank", "noopener"));
+
+// ---- settings cog (skip-intro preference, persisted across visits) ------
+const SKIP_INTRO_KEY = "wxradius.skipIntroPref";
+function getSkipIntroPref(){ return localStorage.getItem(SKIP_INTRO_KEY) === "1"; }
+function setSkipIntroPref(on){
+  localStorage.setItem(SKIP_INTRO_KEY, on ? "1" : "0");
+  const b = $("skipIntroPref");
+  b.textContent = on ? "On" : "Off";
+  b.classList.toggle("on", on);
+}
+setSkipIntroPref(getSkipIntroPref());
+$("skipIntroPref").addEventListener("click", () => setSkipIntroPref(!getSkipIntroPref()));
+$("cogBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  const p = $("settingsPanel");
+  p.style.display = p.style.display === "none" ? "block" : "none";
+});
+document.addEventListener("click", e => {
+  const wrap = $("cogBtn").closest(".cogwrap");
+  if (!wrap.contains(e.target)) $("settingsPanel").style.display = "none";
+});
 $("radarBtn").addEventListener("click", toggleRadar);
 
 $("radiusSeg").addEventListener("click", e => {
