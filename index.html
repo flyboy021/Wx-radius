@@ -456,8 +456,10 @@ function decodedGrid(s){
   const rh = relHum(s.temp, s.dewp);
   const da = densityAlt(s);
   const item = (k, v, cls) => `<span class="d"><b class="${cls||""}">${k}</b>${v}</span>`;
+  const tStr = s.obsTime ? hmStr(new Date(s.obsTime*1000), tzOf(s.lat, s.lon)) : "—";
+  const tVal = (s.obsTime && timeMode === "local") ? `<span class="raw-time">${tStr}</span>` : tStr;
   return `<div class="decoded">` +
-    item("Time", s.obsTime ? hmStr(new Date(s.obsTime*1000), tzOf(s.lat, s.lon)) : "—") +
+    item("Time", tVal) +
     item("Wind", windBarb(s.wdir, s.wspd) + fmtWind(s)) +
     item("Visibility", fmtVis(s)) +
     item("Sky", fmtClouds(s)) +
