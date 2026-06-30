@@ -744,6 +744,26 @@ async function getJson(url){
   if (!r.ok) throw new Error("Weather service error " + r.status);
   return r.json();
 }
+// Fetch METARs for many station ids reliably: small batches, limited concurrency, one retry.
+// (Firing dozens of large id queries at once gets some silently throttled to empty.)
+async function fetchMetarsByIds(ids, chunkSize, limit){
+  chunkSize = chunkSize || 100; limit = limit || 4;
+  const chunks = [];
+  for (let i=0;i<ids.length;i+=chunkSize) chunks.push(ids.slice(i, i+chunkSize));
+  const byId = new Map();
+  for (let i=0;i<chunks.length;i+=limit){
+    const group = chunks.slice(i, i+limit);
+    const results = await Promise.all(group.map(async c => {
+      for (let attempt=0; attempt<2; attempt++){
+        const r = await getJson(`${API}/metar?ids=${c.join(",")}&format=json`).catch(() => null);
+        if (r) return r;
+      }
+      return [];
+    }));
+    for (const r of results) for (const m of r) byId.set(m.icaoId, m);
+  }
+  return byId;
+}
 async function fetchWx(lat, lon){
   const [s,w,n,e] = bbox(lat, lon, radiusNm);
   const box = `${s},${w},${n},${e}`;
@@ -753,17 +773,15 @@ async function fetchWx(lat, lon){
   const allAirports = await loadAirportsIndex();
   const nearIds = [];
   for (const a of allAirports) if (distanceNm(lat, lon, a.lat, a.lon) <= radiusNm) nearIds.push(a.icaoId);
-  const idChunks = [];
-  for (let i=0;i<nearIds.length;i+=200) idChunks.push(nearIds.slice(i,i+200));
-  const [bboxMetars, tafs, ...nearBatches] = await Promise.all([
+  const [bboxMetars, tafs, nearById] = await Promise.all([
     getJson(`${API}/metar?bbox=${box}&format=json`).catch(()=>[]),
     getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[]),
-    ...idChunks.map(c => getJson(`${API}/metar?ids=${c.join(",")}&format=json`).catch(()=>[]))
+    fetchMetarsByIds(nearIds)
   ]);
   const tafById = {};
   for (const t of tafs) tafById[t.icaoId] = t;
   const byId = new Map(bboxMetars.map(m => [m.icaoId, m]));
-  for (const batch of nearBatches) for (const m of batch) byId.set(m.icaoId, m);
+  for (const [id,m] of nearById) byId.set(id, m);
   return [...byId.values()]
     .map(m => ({...m, dist: distanceNm(lat, lon, m.lat, m.lon), taf: tafById[m.icaoId] || null}))
     .filter(m => m.dist <= radiusNm)
@@ -1115,17 +1133,15 @@ async function loadRoute(){
     const [s,w,n,e] = region ? regionBox(center) : routeBbox();
     const box = `${s},${w},${n},${e}`;
     const nearIds = [...nearMap.keys()];
-    const idChunks = [];
-    for (let i=0;i<nearIds.length;i+=200) idChunks.push(nearIds.slice(i,i+200));
-    const [farMetars, , tafs, ...nearBatches] = await Promise.all([
+    const [farMetars, , tafs, nearById] = await Promise.all([
       getJson(`${API}/metar?bbox=${box}&format=json`).catch(()=>[]),
       loadAtisAll(),
       getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[]),
-      ...idChunks.map(c => getJson(`${API}/metar?ids=${c.join(",")}&format=json`).catch(()=>[]))
+      fetchMetarsByIds(nearIds)
     ]);
     const tafById={}; for (const t of tafs) tafById[t.icaoId]=t;
     const byId = new Map(farMetars.map(m => [m.icaoId, m]));
-    for (const batch of nearBatches) for (const m of batch) byId.set(m.icaoId, m);  // explicit near data wins
+    for (const [id,m] of nearById) byId.set(id, m);  // explicit near data wins
     let stations = [...byId.values()].map(m=>{
       const known = nearMap.get(m.icaoId);
       const r = known ? {perp:known.dist, along:known.along} : routeDistAlong(m.lat, m.lon, proj);
