@@ -60,7 +60,7 @@
   .toggle{background:var(--panel2);color:var(--muted);border:1px solid var(--line);border-radius:8px;
     height:32px;padding:0 12px;font-size:13px;font-weight:700}
   .toggle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-  #distBtn.on{background:#ffb400;color:#1a1100;border-color:#ffb400}
+  #distBtn.on,#unitBtn.on{background:#ffb400;color:#1a1100;border-color:#ffb400}
   #radarBtn{display:inline-flex;align-items:center;gap:5px}
   #map{flex:1;min-height:0;width:100%;background:#0a0e14}
   #list{flex:1;min-height:0;overflow:auto;-webkit-overflow-scrolling:touch}
@@ -406,8 +406,8 @@ const catColor = c => COLORS[c] || "#8a93a0";
 function fmtWind(s){
   if (s.wdir === 0 && s.wspd === 0) return "Calm";
   const dir = (s.wdir === "VRB" || s.wdir == null) ? "Variable" : String(s.wdir).padStart(3,"0") + "°";
-  let t = `${dir} at ${fmtSpd(s.wspd)} ${windUnit}`;
-  if (s.wgst) t += `, gusts ${fmtSpd(s.wgst)} ${windUnit}`;
+  let t = `${dir} at ${fmtSpdPlain(s.wspd)} ${windUnit}`;
+  if (s.wgst) t += `, gusts ${fmtSpdPlain(s.wgst)} ${windUnit}`;
   return t;
 }
 const COVER = {FEW:"Few", SCT:"Scattered", BKN:"Broken", OVC:"Overcast",
@@ -488,7 +488,7 @@ function convertWindGroup(raw){
   return raw.replace(/\b(\d{3}|VRB|000)(\d{2,3})(G(\d{2,3}))?KT\b/, (m, dir, spd, g, gst) => {
     const sMph = String(fmtSpd(+spd)).padStart(spd.length, "0");
     const gMph = gst ? String(fmtSpd(+gst)).padStart(gst.length, "0") : "";
-    return `<span class="raw-time">${dir}${sMph}${gst ? `G${gMph}` : ""}MPH</span>`;
+    return `<span class="raw-time">${dir}${sMph}${gst ? `G${gMph}` : ""} MPH</span>`;
   });
 }
 function highlightRaw(raw, col, obsTime, tz){
@@ -584,8 +584,8 @@ function fcstWind(f){
   if (f.wspd == null && f.wdir == null) return null;
   if (f.wspd === 0) return "wind calm";
   const dir = (f.wdir === "VRB" || f.wdir === 0) ? "variable" : `${String(f.wdir).padStart(3,"0")}°`;
-  let s = `wind ${dir} at ${fmtSpd(f.wspd)} ${windUnit}`;
-  if (f.wgst) s += ` gusting ${fmtSpd(f.wgst)} ${windUnit}`;
+  let s = `wind ${dir} at ${fmtSpdPlain(f.wspd)} ${windUnit}`;
+  if (f.wgst) s += ` gusting ${fmtSpdPlain(f.wgst)} ${windUnit}`;
   return s;
 }
 function fcstVis(f){ return f.visib != null ? `vis ${f.visib} sm` : null; }
@@ -799,6 +799,10 @@ function fmtDist(nm){
 }
 function fmtSpd(kt){
   return windUnit === "mph" ? Math.round(kt * 1.15078) : kt;
+}
+// Decoded "Plain" text gets a touch more precision in mph (nearest .1).
+function fmtSpdPlain(kt){
+  return windUnit === "mph" ? (kt * 1.15078).toFixed(1) : kt;
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -1229,7 +1233,7 @@ function decodeRemarks(raw){
     else if ((m = t.match(/^P(\d{4})$/))){ out.push(`Precipitation last hour ${(+m[1]/100).toFixed(2)} in`); }
     else if ((m = t.match(/^6(\d{4})$/))){ out.push(`Precipitation 3–6 hr ${(+m[1]/100).toFixed(2)} in`); }
     else if ((m = t.match(/^7(\d{4})$/))){ out.push(`Precipitation 24 hr ${(+m[1]/100).toFixed(2)} in`); }
-    else if (t === "PK" && toks[i+1] === "WND"){ const wm = (toks[i+2]||"").match(/^(\d{3})(\d{2,3})\/(\d{2})?(\d{2})$/); if (wm){ const tm = wm[3] ? `${wm[3]}:${wm[4]}` : `:${wm[4]}`; out.push(`Peak wind ${wm[1]}° at ${fmtSpd(+wm[2])} ${windUnit} at ${tm}Z`); i += 2; } }
+    else if (t === "PK" && toks[i+1] === "WND"){ const wm = (toks[i+2]||"").match(/^(\d{3})(\d{2,3})\/(\d{2})?(\d{2})$/); if (wm){ const tm = wm[3] ? `${wm[3]}:${wm[4]}` : `:${wm[4]}`; out.push(`Peak wind ${wm[1]}° at ${fmtSpdPlain(+wm[2])} ${windUnit} at ${tm}Z`); i += 2; } }
     else if (t === "WSHFT"){
       const w = toks[i+1]||""; let s = `Wind shift at ${w.length===4 ? w.slice(0,2)+":"+w.slice(2) : w}Z`; i++;
       if (toks[i+1] === "FROPA"){ s += " (frontal passage)"; i++; }
