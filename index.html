@@ -407,8 +407,9 @@ const catColor = c => COLORS[c] || "#8a93a0";
 function fmtWind(s){
   if (s.wdir === 0 && s.wspd === 0) return "Calm";
   const dir = (s.wdir === "VRB" || s.wdir == null) ? "Variable" : String(s.wdir).padStart(3,"0") + "°";
-  let t = `${dir} at ${fmtSpdPlain(s.wspd)} ${windUnit}`;
-  if (s.wgst) t += `, gusts ${fmtSpdPlain(s.wgst)} ${windUnit}`;
+  const spdCls = windUnit === "mph" ? " mph" : "";
+  let t = `${dir} at <span class="wind-val${spdCls}">${fmtSpdPlain(s.wspd)} ${windUnit}</span>`;
+  if (s.wgst) t += `, gusts <span class="wind-val${spdCls}">${fmtSpdPlain(s.wgst)} ${windUnit}</span>`;
   return t;
 }
 const COVER = {FEW:"Few", SCT:"Scattered", BKN:"Broken", OVC:"Overcast",
@@ -457,7 +458,7 @@ function decodedGrid(s){
   const item = (k, v, cls) => `<span class="d"><b class="${cls||""}">${k}</b>${v}</span>`;
   return `<div class="decoded">` +
     item("Time", s.obsTime ? hmStr(new Date(s.obsTime*1000), tzOf(s.lat, s.lon)) : "—") +
-    item("Wind", windBarb(s.wdir, s.wspd) + `<span class="wind-val${windUnit === "mph" ? " mph" : ""}">${fmtWind(s)}</span>`) +
+    item("Wind", windBarb(s.wdir, s.wspd) + fmtWind(s)) +
     item("Visibility", fmtVis(s)) +
     item("Sky", fmtClouds(s)) +
     `<div class="drow">${item("Temp", fmtTemp(s))}${item("RH", rh != null ? rh + "%" : "—")}</div>` +
@@ -1487,6 +1488,10 @@ function setViewMode(mode){
   const b = $("listBtn");
   b.textContent = mode === "map" ? "List" : "Map";
   b.classList.toggle("on", mode === "list");
+  // Tag labels and radar only apply to the map view.
+  $("labelBtn").style.display = mode === "map" ? "" : "none";
+  $("radarBtn").style.display = mode === "map" ? "" : "none";
+  if (mode === "list" && radarLayers.length) stopRadar();
   if (mode === "map") setTimeout(() => map.invalidateSize(), 60);
 }
 
