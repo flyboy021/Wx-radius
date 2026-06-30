@@ -293,7 +293,7 @@
       <button id="labelBtn" class="toggle" title="What to show next to each dot">Tag: ID</button>
       <button id="modeBtn" class="toggle" title="Show raw or decoded weather">Raw</button>
       <button id="unitBtn" class="toggle" title="Temperature units">°C</button>
-      <button id="distBtn" class="toggle" title="Distance units (nautical / statute miles)">NM</button>
+      <button id="distBtn" class="toggle" title="Wind speed units (knots / miles per hour)">KT</button>
       <button id="radarBtn" class="toggle" title="Toggle weather radar">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6">
           <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/>
@@ -405,8 +405,8 @@ const catColor = c => COLORS[c] || "#8a93a0";
 function fmtWind(s){
   if (s.wdir === 0 && s.wspd === 0) return "Calm";
   const dir = (s.wdir === "VRB" || s.wdir == null) ? "Variable" : String(s.wdir).padStart(3,"0") + "°";
-  let t = `${dir} at ${s.wspd} kt`;
-  if (s.wgst) t += `, gusts ${s.wgst} kt`;
+  let t = `${dir} at ${fmtSpd(s.wspd)} ${windUnit}`;
+  if (s.wgst) t += `, gusts ${fmtSpd(s.wgst)} ${windUnit}`;
   return t;
 }
 const COVER = {FEW:"Few", SCT:"Scattered", BKN:"Broken", OVC:"Overcast",
@@ -573,8 +573,8 @@ function fcstWind(f){
   if (f.wspd == null && f.wdir == null) return null;
   if (f.wspd === 0) return "wind calm";
   const dir = (f.wdir === "VRB" || f.wdir === 0) ? "variable" : `${String(f.wdir).padStart(3,"0")}°`;
-  let s = `wind ${dir} at ${f.wspd} kt`;
-  if (f.wgst) s += ` gusting ${f.wgst} kt`;
+  let s = `wind ${dir} at ${fmtSpd(f.wspd)} ${windUnit}`;
+  if (f.wgst) s += ` gusting ${fmtSpd(f.wgst)} ${windUnit}`;
   return s;
 }
 function fcstVis(f){ return f.visib != null ? `vis ${f.visib} sm` : null; }
@@ -782,10 +782,12 @@ let introLayer = L.layerGroup().addTo(map);
 let circle = null, youMarker = null;
 let introDone = false, locValue = null;
 let labelMode = "id";   // dot labels: id | wx | wind
-let distUnit = "nm";    // distance display: nm | sm
+let windUnit = "kt";    // wind speed display: kt | mph
 function fmtDist(nm){
-  const v = distUnit === "sm" ? nm * 1.15078 : nm;
-  return `${Math.round(v)} ${distUnit}`;
+  return `${Math.round(nm)} nm`;
+}
+function fmtSpd(kt){
+  return windUnit === "mph" ? Math.round(kt * 1.15078) : kt;
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -805,7 +807,7 @@ function stnLabelText(s){
   if (labelMode === "wind"){
     if (s.wspd == null) return s.icaoId;
     if (s.wspd === 0) return "calm";
-    return windBarb(s.wdir, s.wspd) + s.wspd + "kt";
+    return windBarb(s.wdir, s.wspd) + fmtSpd(s.wspd) + windUnit;
   }
   return s.icaoId;
 }
@@ -1216,7 +1218,7 @@ function decodeRemarks(raw){
     else if ((m = t.match(/^P(\d{4})$/))){ out.push(`Precipitation last hour ${(+m[1]/100).toFixed(2)} in`); }
     else if ((m = t.match(/^6(\d{4})$/))){ out.push(`Precipitation 3–6 hr ${(+m[1]/100).toFixed(2)} in`); }
     else if ((m = t.match(/^7(\d{4})$/))){ out.push(`Precipitation 24 hr ${(+m[1]/100).toFixed(2)} in`); }
-    else if (t === "PK" && toks[i+1] === "WND"){ const wm = (toks[i+2]||"").match(/^(\d{3})(\d{2,3})\/(\d{2})?(\d{2})$/); if (wm){ const tm = wm[3] ? `${wm[3]}:${wm[4]}` : `:${wm[4]}`; out.push(`Peak wind ${wm[1]}° at ${+wm[2]} kt at ${tm}Z`); i += 2; } }
+    else if (t === "PK" && toks[i+1] === "WND"){ const wm = (toks[i+2]||"").match(/^(\d{3})(\d{2,3})\/(\d{2})?(\d{2})$/); if (wm){ const tm = wm[3] ? `${wm[3]}:${wm[4]}` : `:${wm[4]}`; out.push(`Peak wind ${wm[1]}° at ${fmtSpd(+wm[2])} ${windUnit} at ${tm}Z`); i += 2; } }
     else if (t === "WSHFT"){
       const w = toks[i+1]||""; let s = `Wind shift at ${w.length===4 ? w.slice(0,2)+":"+w.slice(2) : w}Z`; i++;
       if (toks[i+1] === "FROPA"){ s += " (frontal passage)"; i++; }
@@ -1857,9 +1859,9 @@ $("labelBtn").addEventListener("click", () => {
   renderStations();
 });
 $("distBtn").addEventListener("click", () => {
-  distUnit = distUnit === "nm" ? "sm" : "nm";
-  $("distBtn").textContent = distUnit.toUpperCase();
-  $("distBtn").classList.toggle("on", distUnit === "sm");
+  windUnit = windUnit === "kt" ? "mph" : "kt";
+  $("distBtn").textContent = windUnit.toUpperCase();
+  $("distBtn").classList.toggle("on", windUnit === "mph");
   rerenderKeepingPopup();
 });
 // ---- route controls ----
