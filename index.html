@@ -747,13 +747,24 @@ async function getJson(url){
 async function fetchWx(lat, lon){
   const [s,w,n,e] = bbox(lat, lon, radiusNm);
   const box = `${s},${w},${n},${e}`;
-  const [metars, tafs] = await Promise.all([
-    getJson(`${API}/metar?bbox=${box}&format=json`),
-    getJson(`${API}/taf?bbox=${box}&format=json`)
+  // Pull every airport within the radius from the local index and fetch its METAR
+  // explicitly (the AWC bbox query can silently cap/omit stations) — so we show all
+  // reporting stations, then merge in anything extra the bbox returned.
+  const allAirports = await loadAirportsIndex();
+  const nearIds = [];
+  for (const a of allAirports) if (distanceNm(lat, lon, a.lat, a.lon) <= radiusNm) nearIds.push(a.icaoId);
+  const idChunks = [];
+  for (let i=0;i<nearIds.length;i+=200) idChunks.push(nearIds.slice(i,i+200));
+  const [bboxMetars, tafs, ...nearBatches] = await Promise.all([
+    getJson(`${API}/metar?bbox=${box}&format=json`).catch(()=>[]),
+    getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[]),
+    ...idChunks.map(c => getJson(`${API}/metar?ids=${c.join(",")}&format=json`).catch(()=>[]))
   ]);
   const tafById = {};
   for (const t of tafs) tafById[t.icaoId] = t;
-  return metars
+  const byId = new Map(bboxMetars.map(m => [m.icaoId, m]));
+  for (const batch of nearBatches) for (const m of batch) byId.set(m.icaoId, m);
+  return [...byId.values()]
     .map(m => ({...m, dist: distanceNm(lat, lon, m.lat, m.lon), taf: tafById[m.icaoId] || null}))
     .filter(m => m.dist <= radiusNm)
     .sort((a,b) => a.dist - b.dist);
