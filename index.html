@@ -1490,9 +1490,11 @@ function setViewMode(mode){
   const b = $("listBtn");
   b.textContent = mode === "map" ? "List" : "Map";
   b.classList.toggle("on", mode === "list");
-  // Tag labels and radar only apply to the map view.
+  // Tag labels, radar and the Region scope only apply to the map view.
   $("labelBtn").style.display = mode === "map" ? "" : "none";
   $("radarBtn").style.display = mode === "map" ? "" : "none";
+  const regBtn = document.querySelector('#radiusSeg button[data-r="region"]');
+  if (regBtn) regBtn.style.display = mode === "map" ? "" : "none";
   if (mode === "list" && radarLayers.length) stopRadar();
   if (mode === "map") setTimeout(() => map.invalidateSize(), 60);
 }
