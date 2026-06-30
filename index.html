@@ -485,8 +485,11 @@ function localStamp(epoch, tz){ return stampFor(new Date(epoch * 1000), tz); }
 // Convert a raw wind group (e.g. "21008KT", "21008G15KT", "VRB03KT") to the active wind unit.
 function convertWindGroup(raw){
   if (windUnit !== "mph") return raw;
-  return raw.replace(/\b(\d{3}|VRB|000)(\d{2,3})(G(\d{2,3}))?KT\b/, (m, dir, spd, g, gst) =>
-    `<span class="raw-time">${dir}${fmtSpd(+spd)}${gst ? `G${fmtSpd(+gst)}` : ""}MPH</span>`);
+  return raw.replace(/\b(\d{3}|VRB|000)(\d{2,3})(G(\d{2,3}))?KT\b/, (m, dir, spd, g, gst) => {
+    const sMph = String(fmtSpd(+spd)).padStart(spd.length, "0");
+    const gMph = gst ? String(fmtSpd(+gst)).padStart(gst.length, "0") : "";
+    return `<span class="raw-time">${dir}${sMph}${gst ? `G${gMph}` : ""}MPH</span>`;
+  });
 }
 function highlightRaw(raw, col, obsTime, tz){
   if (!raw) return "";
@@ -808,7 +811,7 @@ function ceilFt(s){
 function stnLabelText(s){
   if (labelMode === "wx"){
     const c = ceilFt(s);
-    const cl = c != null ? c + "′" : (s.cover === "CLR" || s.cover === "SKC" ? "clr" : "");
+    const cl = c != null ? c + "′" : (s.cover === "CLR" || s.cover === "SKC" ? "CLR" : "");
     const v = s.visib != null ? String(s.visib).replace("+", "") + "sm" : "";
     return [cl, v].filter(Boolean).join(" ") || s.icaoId;
   }
