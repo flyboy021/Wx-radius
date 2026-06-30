@@ -153,6 +153,7 @@
   .rmk-item{font-size:13px;color:var(--txt);line-height:1.45}
   .rmk-raw{font-family:ui-monospace,Menlo,Consolas,monospace;color:#8a97a6}
   .decoded .d b.hot{color:#e0152b}
+  .wind-val.mph{color:#ffb400}
   .raw-da{margin-top:6px;font-size:14px;color:var(--txt)}
   .raw-da b{color:var(--muted);font-weight:600;margin-right:6px;font-size:11px;
     text-transform:uppercase;letter-spacing:.04em}
@@ -456,7 +457,7 @@ function decodedGrid(s){
   const item = (k, v, cls) => `<span class="d"><b class="${cls||""}">${k}</b>${v}</span>`;
   return `<div class="decoded">` +
     item("Time", s.obsTime ? hmStr(new Date(s.obsTime*1000), tzOf(s.lat, s.lon)) : "—") +
-    item("Wind", windBarb(s.wdir, s.wspd) + fmtWind(s)) +
+    item("Wind", windBarb(s.wdir, s.wspd) + `<span class="wind-val${windUnit === "mph" ? " mph" : ""}">${fmtWind(s)}</span>`) +
     item("Visibility", fmtVis(s)) +
     item("Sky", fmtClouds(s)) +
     `<div class="drow">${item("Temp", fmtTemp(s))}${item("RH", rh != null ? rh + "%" : "—")}</div>` +
