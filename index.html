@@ -101,6 +101,21 @@
   .rrole.dest{background:#e0152b}
   #status{padding:8px 12px;font-size:13px}
   #status.err{background:#2a1416;color:#ff9094}
+  #status:empty{padding:0}
+  @media (max-width:600px){
+    header{padding:max(env(safe-area-inset-top),8px) 10px 6px}
+    h1{font-size:15px}
+    .sub{margin-top:0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .search{margin-top:6px}
+    .search input,.search button{height:34px;font-size:14px}
+    #gps{width:38px}
+    .controls{margin-top:6px;gap:6px}
+    .seg button,.toggle{height:28px;padding:0 9px;font-size:12px}
+    #status{padding:5px 12px;font-size:12px}
+    footer{padding:4px 12px max(env(safe-area-inset-bottom),4px)}
+    .disc{font-size:9px}
+    #updated{font-size:11px}
+  }
   #list{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
   .card{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;gap:10px;cursor:pointer;
     border-left:4px solid transparent}
@@ -189,6 +204,7 @@
   #settingsPanel .set-row{display:flex;align-items:center;justify-content:space-between;
     gap:10px;padding:6px 2px}
   #settingsPanel .set-label{font-size:13px;color:var(--txt)}
+  #settingsPanel .set-sub{font-size:11px;color:var(--muted);font-weight:600}
   #settingsPanel .tip{width:100%;text-align:center;margin-top:8px}
   .radar-time{background:rgba(13,17,23,.85);color:#cdd6e0;font-size:12px;font-weight:700;
     padding:5px 8px;border-radius:6px;font-variant-numeric:tabular-nums;line-height:1.4}
@@ -241,6 +257,10 @@
           <div class="set-row">
             <span class="set-label">Skip opening sequence</span>
             <button id="skipIntroPref" class="toggle" title="Skip the opening intro animation on startup">Off</button>
+          </div>
+          <div class="set-row">
+            <span class="set-label">Location access<br><span id="gpsPrefStatus" class="set-sub"></span></span>
+            <button id="gpsPrefReset" class="toggle" title="Forget the saved choice and ask again next time">Reset</button>
           </div>
           <button id="tip" class="tip">☕ Tip the dev</button>
         </div>
@@ -1543,13 +1563,28 @@ function cancelIntro(){
   introLayer.clearLayers();
   const b = $("skipBtn"); if (b) b.style.display = "none";
 }
+// ---- GPS permission, asked once and remembered -------------------------
+const GPS_PREF_KEY = "wxradius.gpsPref"; // "granted" | "denied" | absent (never asked)
+function getGpsPref(){ return localStorage.getItem(GPS_PREF_KEY); }
+function setGpsPref(v){
+  localStorage.setItem(GPS_PREF_KEY, v);
+  updateGpsPrefStatus();
+}
+function updateGpsPrefStatus(){
+  const el = $("gpsPrefStatus"); if (!el) return;
+  const pref = getGpsPref();
+  el.textContent = pref === "granted" ? "Allowed — remembered"
+    : pref === "denied" ? "Denied — remembered"
+    : "Not asked yet";
+}
+
 function useMyLocation(){
   cancelIntro();
   setStatus("Getting your location…");
   if (!navigator.geolocation){ setStatus("Location not available — search an airport.", true); return; }
   navigator.geolocation.getCurrentPosition(
-    p => { gpsOk = true; exitRouteMode(); load({lat:p.coords.latitude, lon:p.coords.longitude, name:"My location"}); },
-    () => setStatus("Location denied — search an airport above.", true),
+    p => { gpsOk = true; setGpsPref("granted"); exitRouteMode(); load({lat:p.coords.latitude, lon:p.coords.longitude, name:"My location"}); },
+    () => { setGpsPref("denied"); setStatus("Location denied — search an airport above.", true); },
     {enableHighAccuracy:true, timeout:10000}
   );
 }
@@ -1558,9 +1593,11 @@ function useMyLocation(){
 function getLocation(){
   return new Promise((res, rej) => {
     if (!navigator.geolocation) return rej(new Error("no geolocation"));
+    // Already asked once before: honor the remembered choice instead of prompting again.
+    if (getGpsPref() === "denied") return rej(new Error("denied"));
     navigator.geolocation.getCurrentPosition(
-      p => res({lat:p.coords.latitude, lon:p.coords.longitude, name:"My location"}),
-      () => rej(new Error("denied")),
+      p => { setGpsPref("granted"); res({lat:p.coords.latitude, lon:p.coords.longitude, name:"My location"}); },
+      () => { setGpsPref("denied"); rej(new Error("denied")); },
       {enableHighAccuracy:true, timeout:10000}
     );
   });
@@ -1768,6 +1805,11 @@ function setSkipIntroPref(on){
 }
 setSkipIntroPref(getSkipIntroPref());
 $("skipIntroPref").addEventListener("click", () => setSkipIntroPref(!getSkipIntroPref()));
+updateGpsPrefStatus();
+$("gpsPrefReset").addEventListener("click", () => {
+  localStorage.removeItem(GPS_PREF_KEY);
+  updateGpsPrefStatus();
+});
 $("cogBtn").addEventListener("click", e => {
   e.stopPropagation();
   const p = $("settingsPanel");
