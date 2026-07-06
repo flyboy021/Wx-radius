@@ -1,0 +1,49 @@
+/* ============================================================
+   Vicinity — Spacing, radii, borders, shadows
+   A compact, dense EFB layout: small gaps, tight controls,
+   modest rounding, restrained shadows on a dark ground.
+   ============================================================ */
+:root {
+  /* --- Spacing scale (px) --- */
+  --wx-space-1: 2px;
+  --wx-space-2: 4px;
+  --wx-space-3: 6px;
+  --wx-space-4: 8px;    /* the workhorse gap between controls        */
+  --wx-space-5: 10px;
+  --wx-space-6: 12px;   /* panel padding                             */
+  --wx-space-7: 14px;
+  --wx-space-8: 18px;
+  --wx-space-9: 22px;   /* modal padding                             */
+
+  /* --- Control heights (dense touch targets) --- */
+  --wx-control-sm: 24px;  /* inline seg2 buttons                     */
+  --wx-control-md: 32px;  /* toggles / segmented control             */
+  --wx-control-lg: 40px;  /* search input + primary buttons          */
+
+  /* --- Corner radii --- */
+  --wx-radius-xs:   4px;   /* tags, tiny pills                        */
+  --wx-radius-sm:   5px;   /* category chips, taf pills               */
+  --wx-radius-md:   6px;   /* seg2, small buttons                     */
+  --wx-radius-lg:   8px;   /* buttons, inputs, toggles, segments      */
+  --wx-radius-xl:   10px;  /* dropdown panels                         */
+  --wx-radius-2xl:  14px;  /* modals, leaflet popups                  */
+  --wx-radius-pill: 999px; /* the Zulu clock capsule                  */
+
+  /* --- Borders --- */
+  --wx-border-width: 1px;
+  --wx-border-hair:  1px solid var(--wx-line);
+  --wx-accent-bar:   4px;  /* station card left flight-category bar   */
+
+  /* --- Shadows (dark-ground; deep + soft, low opacity spread) --- */
+  --wx-shadow-inset:  inset 0 0 0 1px #ffffff0a;     /* raised chip highlight */
+  --wx-shadow-1:      0 1px 0 #0003, inset 0 0 0 1px #ffffff0a; /* clock */
+  --wx-shadow-pop:    0 6px 24px #0009;              /* map popups     */
+  --wx-shadow-panel:  0 10px 30px #000a;             /* settings panel */
+  --wx-shadow-modal:  0 12px 44px #000a;             /* modal box      */
+
+  /* --- Overlay scrim --- */
+  --wx-scrim: rgba(0,0,0,.6);
+
+  /* --- Focus ring --- */
+  --wx-focus-ring: 0 0 0 2px #2b6fff66;
+}

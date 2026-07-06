@@ -1,0 +1,43 @@
+/* ============================================================
+   Vicinity — Typography tokens
+   The app ships no webfonts: it uses the native system UI stack
+   for chrome and a monospace stack for raw aviation data.
+   ============================================================ */
+:root {
+  /* --- Font families --- */
+  /* System sans — every label, heading, control in the app.        */
+  --wx-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                  "Helvetica Neue", Arial, sans-serif;
+  /* Monospace — raw METAR / TAF / ATIS strings & tabular data.      */
+  --wx-font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* --- Size scale (px, matching the app) --- */
+  --wx-text-2xs: 9px;    /* legend items, tiny hints                 */
+  --wx-text-xs:  10px;   /* uppercase micro-labels, tags             */
+  --wx-text-sm:  11px;   /* chips, sub-labels                        */
+  --wx-text-13:  13px;   /* control text, raw data body              */
+  --wx-text-base:14px;   /* default body                             */
+  --wx-text-15:  15px;   /* inputs, primary buttons                  */
+  --wx-text-md:  16px;   /* station id, decoded values               */
+  --wx-text-lg:  18px;   /* h1 / modal titles                        */
+  --wx-text-xl:  22px;   /* map popup station id                     */
+
+  /* --- Weights --- */
+  --wx-weight-normal:   400;
+  --wx-weight-medium:   500;
+  --wx-weight-semibold: 600;
+  --wx-weight-bold:     700;
+  --wx-weight-extra:    800;  /* ids, pills, tip button — very common */
+
+  /* --- Line heights --- */
+  --wx-leading-tight: 1.2;
+  --wx-leading-snug:  1.45;   /* raw data blocks                      */
+  --wx-leading-body:  1.5;
+
+  /* --- Tracking --- */
+  --wx-tracking-label: 0.04em; /* uppercase micro-labels             */
+  --wx-tracking-wide:  0.05em;
+
+  /* --- Numerics --- */
+  --wx-numeric: tabular-nums; /* @kind other */ /* clocks, distances, counts */
+}

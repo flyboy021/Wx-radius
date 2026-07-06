@@ -1,0 +1,71 @@
+<!-- @dsCard group="Components" viewport="700x360" name="Controls" subtitle="Buttons, toggles, segmented control, search input" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../../styles.css" />
+<style>
+  body { margin:0; background:var(--wx-panel); color:var(--wx-text);
+    font-family:var(--wx-font-sans); padding:20px; }
+  .grp { margin-bottom:18px; }
+  .lbl { font-size:var(--wx-text-xs); text-transform:uppercase; letter-spacing:.06em;
+    color:var(--wx-faint); font-weight:700; margin-bottom:8px; }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+  const { Button, Toggle, SegmentedControl, TextInput } = window.WxRadiusDesignSystem_991f35;
+  function Demo() {
+    const [r, setR] = React.useState("50");
+    return (
+      <div>
+        <div className="grp">
+          <div className="lbl">Buttons</div>
+          <div className="row">
+            <Button variant="accent">Go</Button>
+            <Button variant="ghost">Clear</Button>
+            <Button variant="cta">☕ Tip the dev</Button>
+            <Button variant="danger">I understand</Button>
+            <Button variant="accent" disabled>Disabled</Button>
+          </div>
+        </div>
+        <div className="grp">
+          <div className="lbl">Toggles</div>
+          <div className="row">
+            <Toggle>Route</Toggle>
+            <Toggle on>List</Toggle>
+            <Toggle on>Radar</Toggle>
+            <Toggle on accent="amber">°F</Toggle>
+            <Toggle accent="amber">KT</Toggle>
+          </div>
+        </div>
+        <div className="grp">
+          <div className="lbl">Segmented control · radius</div>
+          <div className="row">
+            <SegmentedControl
+              value={r} onChange={setR}
+              options={[{value:"25",label:"25"},{value:"50",label:"50"},{value:"100",label:"100"},{value:"region",label:"Region"}]} />
+            <SegmentedControl size="sm" value="raw" onChange={()=>{}}
+              options={[{value:"raw",label:"Raw"},{value:"plain",label:"Decoded"}]} />
+          </div>
+        </div>
+        <div className="grp">
+          <div className="lbl">Search input</div>
+          <div className="row">
+            <TextInput uppercase placeholder="Airport id (e.g. JFK) or route: KJFK KORD KDEN"
+              style={{ width:"420px", maxWidth:"100%" }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  ReactDOM.createRoot(document.getElementById("root")).render(<Demo />);
+</script>
+</body>
+</html>

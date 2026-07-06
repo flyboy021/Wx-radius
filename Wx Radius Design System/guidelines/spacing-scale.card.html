@@ -1,0 +1,38 @@
+<!-- @dsCard group="Spacing" viewport="700x160" name="Spacing & Control Heights" subtitle="Dense 2–12px gaps; 24 / 32 / 40px control tiers" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin:0; background:var(--wx-panel); font-family:var(--wx-font-sans); padding:20px; color:var(--wx-text); }
+  .lbl { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--wx-faint); font-weight:700; margin-bottom:8px; }
+  .bars { display:flex; align-items:flex-end; gap:12px; margin-bottom:18px; }
+  .cell { text-align:center; }
+  .bar { background:var(--wx-accent); width:22px; border-radius:2px; }
+  .cap { color:var(--wx-muted); font-size:10px; margin-top:5px; font-family:var(--wx-font-mono); }
+  .ctrls { display:flex; align-items:flex-end; gap:12px; }
+  .ctrl { display:flex; align-items:center; justify-content:center; background:var(--wx-panel-2);
+    border:1px solid var(--wx-line); border-radius:8px; color:var(--wx-muted); font-weight:700;
+    font-size:12px; padding:0 12px; }
+</style>
+</head>
+<body>
+  <div class="lbl">Spacing scale</div>
+  <div class="bars">
+    <div class="cell"><div class="bar" style="height:2px"></div><div class="cap">2</div></div>
+    <div class="cell"><div class="bar" style="height:4px"></div><div class="cap">4</div></div>
+    <div class="cell"><div class="bar" style="height:6px"></div><div class="cap">6</div></div>
+    <div class="cell"><div class="bar" style="height:8px"></div><div class="cap">8</div></div>
+    <div class="cell"><div class="bar" style="height:12px"></div><div class="cap">12</div></div>
+    <div class="cell"><div class="bar" style="height:18px"></div><div class="cap">18</div></div>
+    <div class="cell"><div class="bar" style="height:22px"></div><div class="cap">22</div></div>
+  </div>
+  <div class="lbl">Control heights</div>
+  <div class="ctrls">
+    <div class="ctrl" style="height:24px">24 · in-card</div>
+    <div class="ctrl" style="height:32px">32 · toggle</div>
+    <div class="ctrl" style="height:40px">40 · input / button</div>
+  </div>
+</body>
+</html>

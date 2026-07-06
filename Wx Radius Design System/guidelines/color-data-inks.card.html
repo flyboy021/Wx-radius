@@ -1,0 +1,24 @@
+<!-- @dsCard group="Colors" viewport="700x140" name="Data-type Inks" subtitle="Tinted tags for raw METAR / TAF / ATIS blocks" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin:0; background:var(--wx-panel); font-family:var(--wx-font-sans); padding:18px; }
+  .row { display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  .tag { font-size:10px; font-weight:800; letter-spacing:.05em; padding:2px 8px; border-radius:var(--wx-radius-xs); }
+  .cap { color:var(--wx-muted); font-family:var(--wx-font-mono); font-size:11px; margin-top:3px; }
+  .cell { text-align:center; }
+</style>
+</head>
+<body>
+  <div class="row">
+    <div class="cell"><span class="tag" style="background:var(--wx-metar-bg);color:var(--wx-metar-fg)">METAR</span><div class="cap">#23406b / #bcd6ff</div></div>
+    <div class="cell"><span class="tag" style="background:var(--wx-taf-bg);color:var(--wx-taf-fg)">TAF</span><div class="cap">#3a2d5e / #d9c6ff</div></div>
+    <div class="cell"><span class="tag" style="background:var(--wx-atis-bg);color:var(--wx-atis-fg)">ATIS</span><div class="cap">#214a39 / #9af0c8</div></div>
+    <div class="cell"><span class="tag" style="background:transparent;color:var(--wx-time-hl);border:1px solid var(--wx-time-hl)">212058Z</span><div class="cap">time-hl #ff9f1c</div></div>
+    <div class="cell"><span class="tag" style="background:transparent;color:var(--wx-link);border:1px solid var(--wx-link)">TAF ▾</span><div class="cap">link #7fb0ff</div></div>
+  </div>
+</body>
+</html>

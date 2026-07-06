@@ -1,0 +1,27 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Accent & Amber" subtitle="Aviation blue for actions, amber for caution & the tip jar" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../styles.css" />
+<style>
+  body { margin:0; background:var(--wx-panel); font-family:var(--wx-font-sans); padding:18px; }
+  .grid { display:flex; gap:10px; flex-wrap:wrap; }
+  .sw { width:120px; border-radius:var(--wx-radius-md); overflow:hidden; border:1px solid var(--wx-line); }
+  .chip { height:46px; display:flex; align-items:center; justify-content:center;
+    font-weight:800; font-size:12px; }
+  .meta { padding:6px 8px; background:var(--wx-panel-2); }
+  .nm { color:var(--wx-text); font-size:11px; font-weight:700; }
+  .hex { color:var(--wx-muted); font-family:var(--wx-font-mono); font-size:10px; }
+</style>
+</head>
+<body>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:var(--wx-accent);color:#fff">Actions</div><div class="meta"><div class="nm">accent</div><div class="hex">#2b6fff</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--wx-amber);color:var(--wx-amber-ink)">Tip / units</div><div class="meta"><div class="nm">amber</div><div class="hex">#ffb400</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--wx-amber-soft);color:var(--wx-amber-ink)">Caution</div><div class="meta"><div class="nm">amber-soft</div><div class="hex">#ffb454</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--wx-route);color:var(--wx-amber-ink)">Route</div><div class="meta"><div class="nm">route</div><div class="hex">#ffd23f</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--wx-danger);color:#fff">Danger</div><div class="meta"><div class="nm">danger</div><div class="hex">#e0152b</div></div></div>
+  </div>
+</body>
+</html>
