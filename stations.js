@@ -1,0 +1,28 @@
+// Sample station data for the Vicinity UI kit (NYC area, ~fictional current obs).
+// Shape mirrors what the real app derives from the AWC METAR feed.
+window.WX_STATIONS = [
+  { icao: "KTEB", name: "Teterboro", dist: 8, bear: "N", cat: "MVFR", x: 44, y: 34,
+    raw: "METAR KTEB 211951Z 21014G22KT 6SM BR BKN012 18/16 A2988",
+    wind: "210° at 14 kt, gusts 22 kt", vis: "6 sm", sky: "Broken 1,200 ft", temp: "18°C", dew: "16°C", alt: '29.88" Hg' },
+  { icao: "KEWR", name: "Newark Liberty Intl", dist: 12, bear: "SW", cat: "IFR", x: 33, y: 58,
+    raw: "METAR KEWR 211951Z 18016G26KT 2SM +RA OVC008 17/16 A2985",
+    wind: "180° at 16 kt, gusts 26 kt", vis: "2 sm", sky: "Overcast 800 ft", temp: "17°C", dew: "16°C", alt: '29.85" Hg' },
+  { icao: "KLGA", name: "LaGuardia", dist: 14, bear: "E", cat: "VFR", x: 66, y: 44,
+    raw: "METAR KLGA 211951Z 20010KT 10SM FEW045 21/12 A2991",
+    wind: "200° at 10 kt", vis: "10 sm", sky: "Few 4,500 ft", temp: "21°C", dew: "12°C", alt: '29.91" Hg' },
+  { icao: "KJFK", name: "John F Kennedy Intl", dist: 19, bear: "SE", cat: "VFR", x: 74, y: 66,
+    raw: "METAR KJFK 211951Z 20012KT 10SM FEW250 21/12 A2991",
+    wind: "200° at 12 kt", vis: "10 sm", sky: "Few 25,000 ft", temp: "21°C", dew: "12°C", alt: '29.91" Hg' },
+  { icao: "KHPN", name: "Westchester County", dist: 22, bear: "NE", cat: "LIFR", x: 72, y: 20,
+    raw: "METAR KHPN 211951Z 16008KT 1/2SM FG OVC003 16/16 A2987",
+    wind: "160° at 8 kt", vis: "1/2 sm", sky: "Overcast 300 ft", temp: "16°C", dew: "16°C", alt: '29.87" Hg' },
+  { icao: "KCDW", name: "Essex County", dist: 16, bear: "W", cat: "VFR", x: 20, y: 40,
+    raw: "METAR KCDW 211951Z 22009KT 10SM SCT050 20/13 A2990",
+    wind: "220° at 9 kt", vis: "10 sm", sky: "Scattered 5,000 ft", temp: "20°C", dew: "13°C", alt: '29.90" Hg' },
+  { icao: "KFRG", name: "Republic", dist: 31, bear: "E", cat: "MVFR", x: 88, y: 54,
+    raw: "METAR KFRG 211951Z 19011KT 5SM HZ BKN030 22/14 A2990",
+    wind: "190° at 11 kt", vis: "5 sm", sky: "Broken 3,000 ft", temp: "22°C", dew: "14°C", alt: '29.90" Hg' },
+  { icao: "KMMU", name: "Morristown Muni", dist: 27, bear: "W", cat: "VFR", x: 10, y: 52,
+    raw: "METAR KMMU 211951Z 23008KT 10SM CLR 21/11 A2991",
+    wind: "230° at 8 kt", vis: "10 sm", sky: "Sky clear", temp: "21°C", dew: "11°C", alt: '29.91" Hg' },
+];
