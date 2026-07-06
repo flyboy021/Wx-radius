@@ -1,6 +1,6 @@
 {
-  "name": "Wx Radius — METAR/TAF within 50nm",
-  "short_name": "Wx Radius",
+  "name": "Vicinity — METAR/TAF nearby",
+  "short_name": "Vicinity",
   "description": "Latest METAR and TAF for every station within 50nm, on a map.",
   "start_url": "./",
   "display": "standalone",
