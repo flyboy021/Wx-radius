@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#11161f" />
 <title>Vicinity — METAR/TAF nearby</title>
 <link rel="manifest" href="manifest.webmanifest" />
@@ -21,7 +21,8 @@
   html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
   #app{position:fixed;top:0;right:0;bottom:0;left:0;display:flex;flex-direction:column}
-  header{background:var(--panel);padding:max(env(safe-area-inset-top),12px) 14px 10px;}
+  header{background:var(--panel);padding:max(env(safe-area-inset-top),12px) 14px 10px;
+    touch-action:manipulation;-webkit-text-size-adjust:100%}
   .row1{display:flex;align-items:center;gap:8px}
   h1{font-size:18px;margin:0;font-weight:700;flex:1}
   #zulu{flex:none;background:var(--panel2);border:1px solid #33405440;border-radius:999px;
