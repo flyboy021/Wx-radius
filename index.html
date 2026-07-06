@@ -54,6 +54,7 @@
   #gps{padding:0;width:44px;display:flex;align-items:center;justify-content:center;color:#cdd6e0}
   /* controls */
   .controls{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .controls .row-break{flex-basis:100%;height:0}
   .seg{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;overflow:hidden}
   .seg button{background:transparent;color:var(--muted);border:0;height:32px;padding:0 12px;font-size:13px;font-weight:700}
   .seg button.on{background:var(--accent);color:#fff}
@@ -292,6 +293,7 @@
       </div>
       <button id="routeBtn" class="toggle" title="Plan weather along a route">Route</button>
       <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
+      <div class="row-break"></div>
       <button id="radarBtn" class="toggle" title="Toggle weather radar">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6">
           <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/>
