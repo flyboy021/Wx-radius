@@ -1204,9 +1204,11 @@ function renderChips(){
   ).join("");
   syncRadiusSeg();
 }
+// keep the top Go field showing the current route ids (so removing a chip clears it there too)
+function syncRouteInput(){ const q = $("q"); if (q) q.value = route.map(p => p.id).join(" "); }
 function addWaypoint(wp){
   if (route.length && route[route.length-1].id === wp.id) return;  // no dup in a row
-  route.push(wp); renderChips();
+  route.push(wp); renderChips(); syncRouteInput();
   if (scope === "route") drawRoute();
 }
 async function addWaypointsFromText(txt){
@@ -1951,10 +1953,10 @@ $("routeBtn").addEventListener("click", () => {
   syncRadiusSeg();
   if (open) renderChips();
 });
-$("rpClear").addEventListener("click", () => { route = []; renderChips(); clearRouteLayer(); });
+$("rpClear").addEventListener("click", () => { route = []; renderChips(); syncRouteInput(); clearRouteLayer(); });
 $("rpChips").addEventListener("click", e => {
   const x = e.target.closest(".chip-x"); if (!x) return;
-  route.splice(Number(x.dataset.i), 1); renderChips();
+  route.splice(Number(x.dataset.i), 1); renderChips(); syncRouteInput();
   if (scope === "route"){ if (route.length >= 2) loadRoute(); else drawRoute(); }
 });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
