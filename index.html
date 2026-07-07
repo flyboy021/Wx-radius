@@ -658,13 +658,21 @@ function tafDecodedHtml(t, pillLeft, tz, nowIdx, frac){
   }).join("");
 }
 function currentFcstIdx(t){
-  if (!t || !t.fcsts) return -1;
+  if (!t || !t.fcsts || !t.fcsts.length) return -1;
   const now = Date.now() / 1000;
+  const prevailing = t.fcsts
+    .map((f, i) => ({f, i}))
+    .filter(x => x.f.fcstChange !== "TEMPO" && !x.f.probability && x.f.timeFrom != null);
+  if (!prevailing.length) return -1;
+  // 1) the period that strictly contains "now"
+  for (const {f, i} of prevailing)
+    if (now >= f.timeFrom && (f.timeTo == null || now < f.timeTo)) return i;
+  // 2) fallback: the last prevailing period that has already started (covers gaps / boundaries)
   let idx = -1;
-  t.fcsts.forEach((f, i) => {
-    if (f.fcstChange !== "TEMPO" && !f.probability && f.timeFrom != null && f.timeTo != null
-      && now >= f.timeFrom && now < f.timeTo) idx = i;
-  });
+  for (const {f, i} of prevailing) if (now >= f.timeFrom) idx = i;
+  // but not if the TAF is clearly expired
+  const end = t.validTimeTo || prevailing[prevailing.length - 1].f.timeTo;
+  if (idx >= 0 && end != null && now > end) return -1;
   return idx;
 }
 // progress overlay drawn on the current period's color stripe: elapsed = bright, remaining = dimmed
@@ -1355,7 +1363,7 @@ function decodeRemarks(raw){
       let name = t === "FUNNEL" ? "Funnel cloud" : t.charAt(0) + t.slice(1).toLowerCase();
       if (t === "FUNNEL" && toks[i+1] === "CLOUD") i++;
       const extra = []; let prev = "";
-      while (i+1 < toks.length && /^(B\d{2,4}|E\d{2,4}|DSNT|VC|OHD|AND|MOV|ALQDS|-|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])){
+      while (i+1 < toks.length && /^(B\d{2,4}|E\d{2,4}|DSNT|VC|OHD|AND|MOV|STNRY|ALQDS|-|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])){
         const md = toks[++i];
         if (/^B\d/.test(md)) extra.push("began " + (md.length > 3 ? md.slice(1,3)+":"+md.slice(3) : ":"+md.slice(1)));
         else if (/^E\d/.test(md)) extra.push("ended " + (md.length > 3 ? md.slice(1,3)+":"+md.slice(3) : ":"+md.slice(1)));
@@ -1364,16 +1372,18 @@ function decodeRemarks(raw){
         else if (md === "OHD") extra.push("overhead");
         else if (md === "AND") extra.push("and");
         else if (md === "MOV") extra.push("moving");
+        else if (md === "STNRY") extra.push("stationary");
         else if (md === "-") extra.push("through");
         else extra.push((prev === "AND" || prev === "MOV" || prev === "-") ? rmkDir(md) : "to the " + rmkDir(md));
         prev = md;
       }
       out.push(name + (extra.length ? " " + extra.join(" ") : ""));
     }
-    else if (t === "CB" || t === "TCU" || t === "ACC"){
-      const name = t === "CB" ? "Cumulonimbus" : t === "TCU" ? "Towering cumulus" : "Altocumulus castellanus";
+    else if (t === "CB" || t === "TCU" || t === "ACC" || t === "TS"){
+      const name = t === "CB" ? "Cumulonimbus" : t === "TCU" ? "Towering cumulus"
+        : t === "ACC" ? "Altocumulus castellanus" : "Thunderstorm";
       const mods = [];
-      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|AND|MOV|-|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
+      while (i+1 < toks.length && /^(DSNT|VC|OHD|ALQDS|AND|MOV|STNRY|-|[NSEW]{1,2}(?:-[NSEW]{1,2})?)$/.test(toks[i+1])) mods.push(toks[++i]);
       const where = []; let prev = "";
       for (const md of mods){
         if (md === "DSNT") where.push("distant");
@@ -1381,11 +1391,20 @@ function decodeRemarks(raw){
         else if (md === "OHD") where.push("overhead");
         else if (md === "AND") where.push("and");
         else if (md === "MOV") where.push("moving");
+        else if (md === "STNRY") where.push("stationary");
         else if (md === "-") where.push("through");
         else where.push((prev === "AND" || prev === "MOV" || prev === "-") ? rmkDir(md) : "to the " + rmkDir(md));
         prev = md;
       }
       out.push(name + (where.length ? " " + where.join(" ") : ""));
+    }
+    else if ((m = t.match(/^P(\d{4})$/))) out.push(`Precipitation ${(+m[1]/100).toFixed(2)} in past hour`);
+    else if ((m = t.match(/^6(\d{4}|\/{4})$/))) out.push("Precipitation (3–6 hr): " + (m[1] === "////" ? "not available" : (+m[1]/100).toFixed(2) + " in"));
+    else if ((m = t.match(/^7(\d{4}|\/{4})$/))) out.push("Precipitation (24 hr): " + (m[1] === "////" ? "not available" : (+m[1]/100).toFixed(2) + " in"));
+    else if ((m = t.match(/^5([0-8])(\d{3})$/))){
+      const tr = ["rising then falling","rising then steady","rising","rising rapidly","steady",
+        "falling then rising","falling then steady","falling","falling rapidly"];
+      out.push(`Pressure ${tr[+m[1]]} (${(+m[2]/10).toFixed(1)} hPa / 3 hr)`);
     }
     else if ((m = t.match(/^([+-]?[A-Z]{2,4}?)((?:[BE]\d{2,4})+)$/))){
       const wx = decodeWx(m[1]) || m[1];
