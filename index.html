@@ -271,11 +271,11 @@
       </div>
     </div>
     <div id="where" class="sub">Locating…</div>
-    <div class="search">
+    <form class="search" id="searchForm" action="#" onsubmit="return false">
       <input id="q" placeholder="Airport id (e.g. JFK) or route: KJFK KORD KDEN" autocapitalize="characters"
-             autocorrect="off" spellcheck="false" inputmode="text" autocomplete="off" name="wx-q" />
-      <button id="go">Go</button>
-      <button id="gps" class="ghost" title="Find my location" aria-label="Find my location">
+             autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="go" autocomplete="off" name="wx-q" />
+      <button id="go" type="button">Go</button>
+      <button id="gps" type="button" class="ghost" title="Find my location" aria-label="Find my location">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round">
           <circle cx="12" cy="12" r="6"/>
@@ -284,7 +284,7 @@
           <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
         </svg>
       </button>
-    </div>
+    </form>
     <div class="controls">
       <div class="seg" id="radiusSeg">
         <button data-r="25">25</button>
@@ -1527,7 +1527,19 @@ function cardEl(s){
   return card;
 }
 map.on("popupopen", e => { openStationId = (e.popup._source && e.popup._source._icao) || null; });
-map.on("popupclose", () => { openStationId = null; });
+map.on("popupclose", () => {
+  openStationId = null;
+  // In route mode, opening a popup pans the map; re-center on the route once it's closed
+  // (but not if another station's popup is opening right after).
+  if (scope === "route" && route.length){
+    setTimeout(() => {
+      if (!openStationId){
+        if (corridorSel === "region" && center) map.fitBounds(boxToBounds(regionBox(center)), {padding:[20,20]});
+        else map.fitBounds(routeBoundsLL(), {padding:[34,34]});
+      }
+    }, 50);
+  }
+});
 // re-render everything but reopen the popup that was showing (e.g. after a Raw/Plain or °C/°F toggle)
 function rerenderKeepingPopup(){
   const reopen = openStationId;
@@ -1880,7 +1892,7 @@ $("go").addEventListener("click", async () => {
   catch(e){ setStatus(e.message, true); }
 });
 $("skipBtn").addEventListener("click", skipIntro);
-$("q").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
+$("searchForm").addEventListener("submit", e => { e.preventDefault(); $("q").blur(); $("go").click(); });
 $("gps").addEventListener("click", useMyLocation);
 $("tip").addEventListener("click", () => window.open(TIP_URL, "_blank", "noopener"));
 
