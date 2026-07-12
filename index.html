@@ -1814,6 +1814,7 @@ function skipIntro(){
 
 // ---- radar overlay (RainViewer) ----------------------------------------
 let radarLayers = [], radarFrames = [], radarIdx = 0, radarTimer = null, radarCtl = null;
+let radarLoading = false, radarCancel = false;
 const RADAR_ERR_TILE = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 
 function radarFrameLabel(f){
@@ -1832,9 +1833,13 @@ function stopRadar(){
   $("radarBtn").classList.remove("on");
 }
 async function toggleRadar(){
-  if (radarLayers.length){ stopRadar(); return; }
+  if (radarLoading){ radarCancel = true; return; }   // tapped again mid-load → cancel that load
+  if (radarLayers.length){ stopRadar(); return; }    // already on → turn off
+  radarLoading = true; radarCancel = false;
+  $("radarBtn").classList.add("on");
   try{
     const j = await (await fetch("https://api.rainviewer.com/public/weather-maps.json")).json();
+    if (radarCancel){ $("radarBtn").classList.remove("on"); return; }   // user toggled off while loading
     const host = j.host;
     const past = ((j.radar && j.radar.past) || []).map(f => ({...f, nowcast:false}));
     const now = ((j.radar && j.radar.nowcast) || []).map(f => ({...f, nowcast:true}));
@@ -1860,8 +1865,8 @@ async function toggleRadar(){
       radarIdx = (radarIdx + 1) % radarLayers.length;
       showRadarFrame(radarIdx);
     }, 500);
-    $("radarBtn").classList.add("on");
   }catch(e){ setStatus("Radar unavailable right now.", true); stopRadar(); }
+  finally { radarLoading = false; }
 }
 
 // ---- events -------------------------------------------------------------
