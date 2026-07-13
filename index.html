@@ -174,11 +174,11 @@
   .histBtn{margin-top:3px;background:transparent;border:0;color:#8fb3d6;font-size:12px;
     font-weight:700;cursor:pointer;padding:2px 0}
   .hist{margin-top:4px;border-top:1px solid var(--line);padding-top:5px}
-  .hist-row{display:flex;align-items:center;gap:6px;font-family:ui-monospace,Menlo,Consolas,monospace;
-    font-size:12px;line-height:1.6;padding:1px 0}
-  .hist-cat{flex:none;color:#fff;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;
+  .hist-row{display:grid;grid-template-columns:auto auto 1fr;gap:8px;align-items:start;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;padding:1px 0}
+  .hist-cat{color:#fff;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;
     min-width:42px;text-align:center}
-  .hist-t{color:#ffd23f;flex:none;font-weight:700}
+  .hist-t{color:#ffd23f;font-weight:700;white-space:nowrap}
   .hist-raw{color:#8fb0c8;word-break:break-word}
   .hist.none,.hist .none{color:#6b7a8d;font-style:italic}
   .metar-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
@@ -778,9 +778,9 @@ function wireHistory(btn, slot, s){
   if (!btn || !slot) return;
   btn.addEventListener("click", e => {
     e.stopPropagation();
-    if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; btn.textContent="History ▾"; return; }
+    if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; btn.textContent="METAR History ▾"; return; }
     slot.innerHTML = `<div class="hist">${historyHtml(s)}</div>`;
-    slot.dataset.open = "1"; btn.textContent = "Hide history ▴";
+    slot.dataset.open = "1"; btn.textContent = "Hide METAR history ▴";
   });
 }
 
@@ -1514,7 +1514,7 @@ function popupEl(s){
     <div class="metarbox">${metarBoxHtml(s, false)}</div>
     ${taf ? `<div class="taf-wrap">${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, false)}</div></div>` : ""}
     ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}
-    ${(s.history && s.history.length > 1) ? `<button type="button" class="histBtn">History ▾</button><div class="hist-slot"></div>` : ""}`;
+    ${(s.history && s.history.length > 1) ? `<button type="button" class="histBtn">METAR History ▾</button><div class="hist-slot"></div>` : ""}`;
   wireAtis(el.querySelector(".atisBtn"), el.querySelector(".atis-slot"), atisFor(s.icaoId));
   wireHistory(el.querySelector(".histBtn"), el.querySelector(".hist-slot"), s);
   return el;
@@ -1567,7 +1567,7 @@ function cardEl(s){
       <div class="metarbox">${metarBoxHtml(s, true)}</div>
       ${taf ? `<button type="button" class="tafBtn">Forecast (TAF) ▾</button><div class="taf-slot"></div>` : ""}
       ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}
-      ${(s.history && s.history.length > 1) ? `<button type="button" class="histBtn">History ▾</button><div class="hist-slot"></div>` : ""}
+      ${(s.history && s.history.length > 1) ? `<button type="button" class="histBtn">METAR History ▾</button><div class="hist-slot"></div>` : ""}
     </div>`;
   const tafBtn = card.querySelector(".tafBtn"), slot = card.querySelector(".taf-slot");
   if (tafBtn) tafBtn.addEventListener("click", () => {
