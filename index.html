@@ -170,6 +170,17 @@
   .raw-time{color:#ff9f1c;font-weight:800}
   .windbarb{display:inline-block;vertical-align:middle;margin-right:8px;color:#cdd6e0}
   .age{color:#9aa7b5;font-size:12px;margin:1px 0 4px}
+  .age.stale{color:#ff9f1a;font-weight:600}
+  .histBtn{margin-top:3px;background:transparent;border:0;color:#8fb3d6;font-size:12px;
+    font-weight:700;cursor:pointer;padding:2px 0}
+  .hist{margin-top:4px;border-top:1px solid var(--line);padding-top:5px}
+  .hist-row{display:flex;align-items:center;gap:6px;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12px;line-height:1.6;padding:1px 0}
+  .hist-cat{flex:none;color:#fff;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;
+    min-width:42px;text-align:center}
+  .hist-t{color:#ffd23f;flex:none;font-weight:700}
+  .hist-raw{color:#8fb0c8;word-break:break-word}
+  .hist.none,.hist .none{color:#6b7a8d;font-style:italic}
   .metar-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
   .metar-head .raw-id{flex:1;min-width:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px}
   .cat-txt{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;font-weight:800}
@@ -404,6 +415,12 @@ function distanceNm(a,b,c,d){
 }
 const COLORS = {VFR:"#11a911", MVFR:"#2b6fff", IFR:"#e0152b", LIFR:"#d017d0"};
 const catColor = c => COLORS[c] || "#8a93a0";
+const STALE_MIN = 120;       // map/list dot greys out once a METAR is older than this (2 hours)
+const FETCH_HRS = 6;         // how many hours of history to pull so stale stations still show
+const STALE_GREY = "#8a93a0";
+function metarAgeMin(s){ return s.obsTime ? (Date.now()/1000 - s.obsTime) / 60 : Infinity; }
+function isStale(s){ return metarAgeMin(s) > STALE_MIN; }
+function stnColor(s){ return isStale(s) ? STALE_GREY : catColor(s.fltCat); }
 
 // ---- plain-English decoding --------------------------------------------
 function fmtWind(s){
@@ -746,6 +763,26 @@ function wireAtis(btn, slot, atis){
     slot.dataset.open = "1"; btn.textContent = "Hide ATIS ▴";
   });
 }
+// Past few hours of observations for a station (newest first, each colored by its own category).
+function historyHtml(s){
+  const h = s.history || [];
+  if (h.length < 2) return `<div class="hist none">No earlier observations.</div>`;
+  return h.map(o => {
+    const t = o.obsTime ? hmStr(new Date(o.obsTime*1000), tzOf(o.lat, o.lon)) : "—";
+    return `<div class="hist-row"><span class="hist-t">${t}</span>`
+      + `<span class="hist-cat" style="background:${catColor(o.fltCat)}">${o.fltCat || "?"}</span>`
+      + `<span class="hist-raw">${o.rawOb || ""}</span></div>`;
+  }).join("");
+}
+function wireHistory(btn, slot, s){
+  if (!btn || !slot) return;
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    if (slot.dataset.open){ slot.innerHTML=""; delete slot.dataset.open; btn.textContent="History ▾"; return; }
+    slot.innerHTML = `<div class="hist">${historyHtml(s)}</div>`;
+    slot.dataset.open = "1"; btn.textContent = "Hide history ▴";
+  });
+}
 
 // ---- API ----------------------------------------------------------------
 async function getJson(url){
@@ -756,8 +793,10 @@ async function getJson(url){
 }
 // Fetch METARs for many station ids reliably: small batches, limited concurrency, one retry.
 // (Firing dozens of large id queries at once gets some silently throttled to empty.)
-async function fetchMetarsByIds(ids, chunkSize, limit){
+// Returns a Map of icaoId -> array of that station's observations, newest first.
+async function fetchMetarsByIds(ids, chunkSize, limit, hours){
   chunkSize = chunkSize || 100; limit = limit || 4;
+  const hq = hours ? `&hours=${hours}` : "";
   const chunks = [];
   for (let i=0;i<ids.length;i+=chunkSize) chunks.push(ids.slice(i, i+chunkSize));
   const byId = new Map();
@@ -765,13 +804,17 @@ async function fetchMetarsByIds(ids, chunkSize, limit){
     const group = chunks.slice(i, i+limit);
     const results = await Promise.all(group.map(async c => {
       for (let attempt=0; attempt<2; attempt++){
-        const r = await getJson(`${API}/metar?ids=${c.join(",")}&format=json`).catch(() => null);
+        const r = await getJson(`${API}/metar?ids=${c.join(",")}${hq}&format=json`).catch(() => null);
         if (r) return r;
       }
       return [];
     }));
-    for (const r of results) for (const m of r) byId.set(m.icaoId, m);
+    for (const r of results) for (const m of r){
+      const arr = byId.get(m.icaoId) || byId.set(m.icaoId, []).get(m.icaoId);
+      arr.push(m);
+    }
   }
+  for (const arr of byId.values()) arr.sort((a,b) => (b.obsTime||0) - (a.obsTime||0));
   return byId;
 }
 async function fetchWx(lat, lon){
@@ -786,14 +829,15 @@ async function fetchWx(lat, lon){
   const [bboxMetars, tafs, nearById] = await Promise.all([
     getJson(`${API}/metar?bbox=${box}&format=json`).catch(()=>[]),
     getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[]),
-    fetchMetarsByIds(nearIds)
+    fetchMetarsByIds(nearIds, 100, 4, FETCH_HRS)
   ]);
   const tafById = {};
   for (const t of tafs) tafById[t.icaoId] = t;
-  const byId = new Map(bboxMetars.map(m => [m.icaoId, m]));
-  for (const [id,m] of nearById) byId.set(id, m);
-  return [...byId.values()]
-    .map(m => ({...m, dist: distanceNm(lat, lon, m.lat, m.lon), taf: tafById[m.icaoId] || null}))
+  const histById = new Map();
+  for (const m of bboxMetars) if (!histById.has(m.icaoId)) histById.set(m.icaoId, [m]);
+  for (const [id, arr] of nearById) histById.set(id, arr);   // id fetch carries history + stale
+  return [...histById.values()]
+    .map(hist => ({...hist[0], history: hist, dist: distanceNm(lat, lon, hist[0].lat, hist[0].lon), taf: tafById[hist[0].icaoId] || null}))
     .filter(m => m.dist <= radiusNm)
     .sort((a,b) => a.dist - b.dist);
 }
@@ -877,7 +921,7 @@ function stationIcon(s){
     || (scope === "route" && corridorSel === "region" && s.dist > corridorNm);
   const lbl = hideLabels ? "" : `<span class="lbl">${stnLabelText(s)}</span>`;
   return L.divIcon({className:"",
-    html:`<div class="stn"><span class="pin" style="background:${catColor(s.fltCat)}"></span>${lbl}</div>`,
+    html:`<div class="stn"><span class="pin" style="background:${stnColor(s)}"></span>${lbl}</div>`,
     iconSize:[130,20], iconAnchor:[10,11]});
 }
 function bearingDeg(lat1, lon1, lat2, lon2){
@@ -896,9 +940,9 @@ function updateRouteRibbon(arr){
   const el = $("ribbon"); if (!el) return;
   const order = {LIFR:4, IFR:3, MVFR:2, VFR:1};
   let worst = null;
-  for (const s of arr) if (!worst || (order[s.fltCat]||0) > (order[worst]||0)) worst = s.fltCat;
+  for (const s of arr) if (!isStale(s) && (!worst || (order[s.fltCat]||0) > (order[worst]||0))) worst = s.fltCat;
   let html = (worst === "IFR" || worst === "LIFR") ? `<span class="rb-vnr">VFR flight not recommended</span>` : "";
-  const bad = arr.find(s => s.fltCat === "IFR" || s.fltCat === "LIFR");
+  const bad = arr.find(s => !isStale(s) && (s.fltCat === "IFR" || s.fltCat === "LIFR"));
   if (bad){
     const where = bad.along < 0 ? "before dep" : `${fmtDist(bad.along)} in`;
     html += `<span class="rb-near"><b style="color:${catColor(bad.fltCat)}">${bad.fltCat}:</b>${bad.icaoId} ${where}</span>`;
@@ -910,7 +954,7 @@ function updateRibbon(arr){
   const el = $("ribbon"); if (!el) return;
   if (!arr || !arr.length){ el.style.display = "none"; return; }
   if (scope === "route"){ updateRouteRibbon(arr); return; }
-  const near = arr.find(s => s.fltCat === "IFR" || s.fltCat === "LIFR");   // arr is sorted by distance
+  const near = arr.find(s => !isStale(s) && (s.fltCat === "IFR" || s.fltCat === "LIFR"));   // fresh, sorted by distance
   if (near && center){
     const brg = compass(bearingDeg(center.lat, center.lon, near.lat, near.lon));
     el.innerHTML = `<span class="rb-near"><b style="color:${catColor(near.fltCat)}">Nearest ${near.fltCat}:</b>${near.icaoId} ${fmtDist(near.dist)} ${brg}</span>`;
@@ -1147,15 +1191,17 @@ async function loadRoute(){
       getJson(`${API}/metar?bbox=${box}&format=json`).catch(()=>[]),
       loadAtisAll(),
       getJson(`${API}/taf?bbox=${box}&format=json`).catch(()=>[]),
-      fetchMetarsByIds(nearIds)
+      fetchMetarsByIds(nearIds, 100, 4, FETCH_HRS)
     ]);
     const tafById={}; for (const t of tafs) tafById[t.icaoId]=t;
-    const byId = new Map(farMetars.map(m => [m.icaoId, m]));
-    for (const [id,m] of nearById) byId.set(id, m);  // explicit near data wins
-    let stations = [...byId.values()].map(m=>{
+    const histById = new Map();
+    for (const m of farMetars) if (!histById.has(m.icaoId)) histById.set(m.icaoId, [m]);
+    for (const [id, arr] of nearById) histById.set(id, arr);   // explicit near data (with history) wins
+    let stations = [...histById.values()].map(hist=>{
+      const m = hist[0];
       const known = nearMap.get(m.icaoId);
       const r = known ? {perp:known.dist, along:known.along} : routeDistAlong(m.lat, m.lon, proj);
-      return {...m, taf: tafById[m.icaoId]||null, dist:r.perp, along:r.along,
+      return {...m, history:hist, taf: tafById[m.icaoId]||null, dist:r.perp, along:r.along,
         routeRole: m.icaoId===depId ? "dep" : (m.icaoId===destId ? "dest" : null)};
     });
     if (region){
@@ -1245,7 +1291,7 @@ function drawBase(){
 
 // Raw or decoded METAR box, controlled globally by metarMode.
 function rawLineHtml(s, pillLeft){
-  const col = catColor(s.fltCat);
+  const col = stnColor(s);
   const pill = `<span class="taf-pill" style="background:${col}">${s.fltCat||"?"}</span>`;
   const raw = `<span class="raw">${highlightRaw(s.rawOb, col, s.obsTime, tzOf(s.lat, s.lon))}</span>`;
   return `<div class="rawline">${pillLeft ? pill + raw : raw + pill}</div>`;
@@ -1430,7 +1476,10 @@ function agoStr(ms){
   return `${h} hour${h === 1 ? "" : "s"}${m ? ` ${m} minute${m === 1 ? "" : "s"}` : ""} ago`;
 }
 function metarBoxHtml(s, pillLeft){
-  const age = s.obsTime ? `<div class="age">METAR reported ${agoStr(s.obsTime * 1000)}</div>` : "";
+  const stale = isStale(s);
+  const age = s.obsTime
+    ? `<div class="age${stale ? " stale" : ""}">METAR reported ${agoStr(s.obsTime * 1000)}${stale ? " — too old for flight planning; reference only." : ""}</div>`
+    : "";
   if (metarMode === "raw") {
     const da = densityAlt(s);
     const daLine = da != null
@@ -1438,7 +1487,7 @@ function metarBoxHtml(s, pillLeft){
       : "";
     return age + rawLineHtml(s, pillLeft) + daLine;
   }
-  const col = catColor(s.fltCat);
+  const col = stnColor(s);
   const id = `<span class="raw-id" style="color:${col}">${s.icaoId} ${s.metarType || "METAR"}</span>`;
   const pill = `<span class="taf-pill" style="background:${col}">${s.fltCat||"?"}</span>`;
   const header = `<div class="metar-head">${pillLeft ? pill + id : id + pill}</div>`;
@@ -1464,8 +1513,10 @@ function popupEl(s){
     <div class="pop-name">${(s.name||"").trim()} · ${distLabel(s)}</div>
     <div class="metarbox">${metarBoxHtml(s, false)}</div>
     ${taf ? `<div class="taf-wrap">${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, false)}</div></div>` : ""}
-    ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}`;
+    ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}
+    ${(s.history && s.history.length > 1) ? `<button type="button" class="histBtn">History ▾</button><div class="hist-slot"></div>` : ""}`;
   wireAtis(el.querySelector(".atisBtn"), el.querySelector(".atis-slot"), atisFor(s.icaoId));
+  wireHistory(el.querySelector(".histBtn"), el.querySelector(".hist-slot"), s);
   return el;
 }
 
@@ -1497,7 +1548,7 @@ function renderStations(){
 function cardEl(s){
   const card = document.createElement("div");
   card.className = "card";
-  card.style.borderLeftColor = catColor(s.fltCat);
+  card.style.borderLeftColor = stnColor(s);
   if (s.noWx){
     card.innerHTML = `
       <div class="body">
@@ -1516,6 +1567,7 @@ function cardEl(s){
       <div class="metarbox">${metarBoxHtml(s, true)}</div>
       ${taf ? `<button type="button" class="tafBtn">Forecast (TAF) ▾</button><div class="taf-slot"></div>` : ""}
       ${atisFor(s.icaoId) ? `<button type="button" class="atisBtn">ATIS ▾</button><div class="atis-slot"></div>` : ""}
+      ${(s.history && s.history.length > 1) ? `<button type="button" class="histBtn">History ▾</button><div class="hist-slot"></div>` : ""}
     </div>`;
   const tafBtn = card.querySelector(".tafBtn"), slot = card.querySelector(".taf-slot");
   if (tafBtn) tafBtn.addEventListener("click", () => {
@@ -1524,6 +1576,7 @@ function cardEl(s){
     slot.innerHTML = `<div class="taf-wrap">${tafAgeLine(s.taf)}<div class="taf">${tafBlock(s.taf, true)}</div></div>`;
   });
   wireAtis(card.querySelector(".atisBtn"), card.querySelector(".atis-slot"), atisFor(s.icaoId));
+  wireHistory(card.querySelector(".histBtn"), card.querySelector(".hist-slot"), s);
   return card;
 }
 map.on("popupopen", e => { openStationId = (e.popup._source && e.popup._source._icao) || null; });
@@ -1825,8 +1878,16 @@ function showRadarFrame(i){
   const box = document.getElementById("radarTimeBox");
   if (box) box.textContent = radarFrameLabel(radarFrames[i]);
 }
+// Advance one frame; pause ~2.5s on the newest frame so the latest position is clear before looping.
+function radarLoop(){
+  radarLayers[radarIdx].setOpacity(0);
+  radarIdx = (radarIdx + 1) % radarLayers.length;
+  showRadarFrame(radarIdx);
+  const onLast = radarIdx === radarLayers.length - 1;
+  radarTimer = setTimeout(radarLoop, onLast ? 2500 : 500);
+}
 function stopRadar(){
-  if (radarTimer){ clearInterval(radarTimer); radarTimer = null; }
+  if (radarTimer){ clearTimeout(radarTimer); radarTimer = null; }
   radarLayers.forEach(l => map.removeLayer(l));
   radarLayers = []; radarFrames = [];
   if (radarCtl){ map.removeControl(radarCtl); radarCtl = null; }
@@ -1860,11 +1921,7 @@ async function toggleRadar(){
     radarCtl.addTo(map);
     radarIdx = 0;
     showRadarFrame(0);
-    radarTimer = setInterval(() => {
-      radarLayers[radarIdx].setOpacity(0);
-      radarIdx = (radarIdx + 1) % radarLayers.length;
-      showRadarFrame(radarIdx);
-    }, 500);
+    radarTimer = setTimeout(radarLoop, 500);
   }catch(e){ setStatus("Radar unavailable right now.", true); stopRadar(); }
   finally { radarLoading = false; }
 }

@@ -6,7 +6,7 @@
 // PROXY_BASE in index.html. After that you never run a local server.
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
 
     // CORS preflight (harmless to support).
@@ -17,6 +17,36 @@ export default {
           "Access-Control-Allow-Methods": "GET, OPTIONS",
         },
       });
+    }
+
+    // Synoptic Data (MesoWest) — mountain-pass / RWIS / mesonet stations.
+    // The API token is kept server-side as the SYNOPTIC_TOKEN Worker variable,
+    // never in the app or on GitHub. The app calls: /synoptic?radius=lat,lon,mi&vars=...
+    if (url.pathname.startsWith("/synoptic")) {
+      const token = env && env.SYNOPTIC_TOKEN;
+      if (!token) {
+        return new Response(JSON.stringify({ error: "Synoptic token not configured" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+      const qs = new URLSearchParams(url.search);
+      qs.set("token", token);
+      const target = "https://api.synopticdata.com/v2/stations/latest?" + qs.toString();
+      try {
+        const up = await fetch(target, {
+          headers: { Accept: "application/json" },
+          cf: { cacheTtl: 120, cacheEverything: true }, // 2-min edge cache
+        });
+        const res = new Response(up.body, up);
+        res.headers.set("Access-Control-Allow-Origin", "*");
+        return res;
+      } catch (e) {
+        return new Response(JSON.stringify({ error: "synoptic unreachable" }), {
+          status: 502,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
     }
 
     if (url.pathname.startsWith("/atis/")) {
