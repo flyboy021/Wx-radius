@@ -1599,19 +1599,31 @@ function cardEl(s){
   wireHistory(card.querySelector(".histBtn"), card.querySelector(".hist-slot"), s);
   return card;
 }
+// Remember the last map view with no popup open, so we can restore it after a popup's
+// auto-pan shifts the map. Popup auto-pan fires its moveend while a popup is already open
+// (openStationId set), so those moves don't overwrite the saved view.
+let settledView = null, restoringView = false;
+map.on("moveend", () => {
+  if (!openStationId && !restoringView) settledView = {center: map.getCenter(), zoom: map.getZoom()};
+});
 map.on("popupopen", e => { openStationId = (e.popup._source && e.popup._source._icao) || null; });
 map.on("popupclose", () => {
   openStationId = null;
-  // In route mode, opening a popup pans the map; re-center on the route once it's closed
-  // (but not if another station's popup is opening right after).
-  if (scope === "route" && route.length){
-    setTimeout(() => {
-      if (!openStationId){
-        if (corridorSel === "region" && center) map.fitBounds(boxToBounds(regionBox(center)), {padding:[20,20]});
-        else map.fitBounds(routeBoundsLL(), {padding:[34,34]});
-      }
-    }, 50);
-  }
+  // Wait a tick: if another station's popup is opening right after, don't move at all.
+  setTimeout(() => {
+    if (openStationId) return;
+    if (scope === "route" && route.length){
+      if (corridorSel === "region" && center) map.fitBounds(boxToBounds(regionBox(center)), {padding:[20,20]});
+      else map.fitBounds(routeBoundsLL(), {padding:[34,34]});
+      return;
+    }
+    // Radius/region: pan back to exactly where you were looking before the popup opened.
+    if (settledView){
+      restoringView = true;
+      map.setView(settledView.center, settledView.zoom, {animate: true});
+      map.once("moveend", () => { restoringView = false; });
+    }
+  }, 60);
 });
 // re-render everything but reopen the popup that was showing (e.g. after a Raw/Plain or °C/°F toggle)
 function rerenderKeepingPopup(){
