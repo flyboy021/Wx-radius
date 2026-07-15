@@ -2000,13 +2000,22 @@ function acRender(items){
 function acSearch(qRaw){
   const q = (qRaw||"").trim().toUpperCase();
   if (q.length < 2 || /[\s,]/.test(q) || !airportsAll){ acRender([]); return; }
-  const idHits=[], nameHits=[];
+  // Ranked buckets: exact id, then K+id (the FAA 3-letter code → KDAL), then id/K-stripped
+  // prefix matches, then name/city matches.
+  const exact=[], kExact=[], idPre=[], kPre=[], nameHits=[];
   for (const a of airportsAll){
-    if (a.icaoId.startsWith(q)){ if (idHits.length < 8) idHits.push(a); }
+    const id = a.icaoId;
+    if (id === q) exact.push(a);
+    else if (id === "K" + q) kExact.push(a);
+    else if (id.startsWith(q)){ if (idPre.length < 8) idPre.push(a); }
+    else if (id[0] === "K" && id.slice(1).startsWith(q)){ if (kPre.length < 8) kPre.push(a); }
     else if (a.name && a.name.toUpperCase().includes(q)){ if (nameHits.length < 8) nameHits.push(a); }
-    if (idHits.length >= 8 && nameHits.length >= 8) break;
   }
-  acRender(idHits.concat(nameHits).slice(0, 8));
+  const seen = new Set(), out = [];
+  for (const a of [...exact, ...kExact, ...idPre, ...kPre, ...nameHits]){
+    if (!seen.has(a.icaoId)){ seen.add(a.icaoId); out.push(a); }
+  }
+  acRender(out.slice(0, 8));
 }
 function acPick(a){
   if (!a) return;
