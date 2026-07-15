@@ -243,6 +243,7 @@
   /* map station marker + id label */
   .stn{display:flex;align-items:center;gap:3px;white-space:nowrap}
   .stn .pin{width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0006;flex:none}
+  .stn .pin-shape{flex:none;line-height:0;display:inline-flex;filter:drop-shadow(0 0 1px #0009)}
   .stn .lbl{font-size:12px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 1px 2px #000}
   .you{width:16px;height:16px;border-radius:50%;background:#ffffff;border:3px solid #0d1117;
     box-shadow:0 0 0 2px #ffffff99, 0 0 12px #ffffffcc}
@@ -921,8 +922,16 @@ function stationIcon(s){
     || (scope === "route" && corridorSel === "region" && s.dist > corridorNm);
   const lbl = hideLabels ? "" : `<span class="lbl">${stnLabelText(s)}</span>`;
   return L.divIcon({className:"",
-    html:`<div class="stn"><span class="pin" style="background:${stnColor(s)}"></span>${lbl}</div>`,
+    html:`<div class="stn">${stnPin(s)}${lbl}</div>`,
     iconSize:[130,20], iconAnchor:[10,11]});
+}
+// Marker shape: triangle when the station has a co-located TAF, otherwise a circle.
+function stnPin(s){
+  const col = stnColor(s);
+  if (s.taf)
+    return `<span class="pin-shape"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">`
+      + `<polygon points="12,4 21,20 3,20" fill="${col}" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/></svg></span>`;
+  return `<span class="pin" style="background:${col}"></span>`;
 }
 function bearingDeg(lat1, lon1, lat2, lon2){
   const r = Math.PI / 180;
