@@ -46,7 +46,17 @@
   .spacer{flex:1}
   .foot-left{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
   .sub{color:var(--muted);font-size:12px;margin-top:2px}
-  .search{display:flex;gap:8px;margin-top:10px}
+  .search{display:flex;gap:8px;margin-top:10px;position:relative}
+  .ac-list{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:1200;
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden;
+    box-shadow:0 8px 24px #0008;display:none}
+  .ac-list.open{display:block}
+  .ac-item{display:flex;align-items:baseline;gap:8px;padding:9px 12px;cursor:pointer;
+    border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ac-item:last-child{border-bottom:0}
+  .ac-item:hover,.ac-item.sel{background:var(--panel2)}
+  .ac-item b{color:#fff;font-weight:800;font-size:14px;flex:none;letter-spacing:.02em}
+  .ac-item span{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis}
   .search input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);
     color:var(--txt);border-radius:8px;height:40px;padding:0 12px;font-size:15px}
   .search button{background:var(--accent);color:#fff;border:0;border-radius:8px;height:40px;
@@ -284,7 +294,7 @@
     </div>
     <div id="where" class="sub">Locating…</div>
     <form class="search" id="searchForm" action="#" onsubmit="return false">
-      <input id="q" placeholder="Airport id (e.g. JFK) or route: KJFK KORD KDEN" autocapitalize="characters"
+      <input id="q" placeholder="Airport id or name — e.g. JFK, Denver, or route KJFK KORD" autocapitalize="characters"
              autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="go" autocomplete="off" name="wx-q" />
       <button id="go" type="button">Go</button>
       <button id="gps" type="button" class="ghost" title="Find my location" aria-label="Find my location">
@@ -296,6 +306,7 @@
           <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
         </svg>
       </button>
+      <div id="acList" class="ac-list"></div>
     </form>
     <div class="controls">
       <div class="seg" id="radiusSeg">
@@ -1156,7 +1167,7 @@ function loadAirportsIndex(){
   if (airportsAll) return Promise.resolve(airportsAll);
   if (airportsLoading) return airportsLoading;
   airportsLoading = fetch("airports.json").then(r => r.json())
-    .then(arr => airportsAll = arr.map(a => ({icaoId:a[0], lat:a[1], lon:a[2]})))
+    .then(arr => airportsAll = arr.map(a => ({icaoId:a[0], lat:a[1], lon:a[2], name:a[3] || ""})))
     .catch(() => airportsAll = []);
   return airportsLoading;
 }
@@ -1963,7 +1974,54 @@ $("go").addEventListener("click", async () => {
   catch(e){ setStatus(e.message, true); }
 });
 $("skipBtn").addEventListener("click", skipIntro);
-$("searchForm").addEventListener("submit", e => { e.preventDefault(); $("q").blur(); $("go").click(); });
+// ---- airport type-ahead: match by identifier or name/city ----------------
+let acItems = [], acSel = -1;
+function acHide(){ const el=$("acList"); if(el){ el.className="ac-list"; el.innerHTML=""; } acItems=[]; acSel=-1; }
+function acRender(items){
+  acItems = items; acSel = -1;
+  const el = $("acList"); if (!el) return;
+  if (!items.length){ acHide(); return; }
+  el.innerHTML = items.map((a,i) =>
+    `<div class="ac-item" data-i="${i}"><b>${a.icaoId}</b><span>${a.name || ""}</span></div>`).join("");
+  el.className = "ac-list open";
+}
+function acSearch(qRaw){
+  const q = (qRaw||"").trim().toUpperCase();
+  if (q.length < 2 || /[\s,]/.test(q) || !airportsAll){ acRender([]); return; }
+  const idHits=[], nameHits=[];
+  for (const a of airportsAll){
+    if (a.icaoId.startsWith(q)){ if (idHits.length < 8) idHits.push(a); }
+    else if (a.name && a.name.toUpperCase().includes(q)){ if (nameHits.length < 8) nameHits.push(a); }
+    if (idHits.length >= 8 && nameHits.length >= 8) break;
+  }
+  acRender(idHits.concat(nameHits).slice(0, 8));
+}
+function acPick(a){
+  if (!a) return;
+  acHide(); $("q").value = a.icaoId; $("q").blur();
+  cancelIntro(); exitRouteMode(); setStatus("Searching…");
+  load({lat:a.lat, lon:a.lon, name:a.name || a.icaoId});
+}
+function acHighlight(){ [...$("acList").children].forEach((c,i)=> c.classList.toggle("sel", i===acSel)); }
+$("q").addEventListener("focus", () => { loadAirportsIndex().then(() => { if (document.activeElement === $("q")) acSearch($("q").value); }); });
+$("q").addEventListener("input", () => acSearch($("q").value));
+$("q").addEventListener("keydown", e => {
+  if (!acItems.length) return;
+  if (e.key === "ArrowDown"){ acSel = Math.min(acSel+1, acItems.length-1); acHighlight(); e.preventDefault(); }
+  else if (e.key === "ArrowUp"){ acSel = Math.max(acSel-1, 0); acHighlight(); e.preventDefault(); }
+  else if (e.key === "Escape"){ acHide(); }
+});
+$("acList").addEventListener("mousedown", e => {   // mousedown fires before the input's blur
+  const it = e.target.closest(".ac-item"); if (!it) return;
+  e.preventDefault(); acPick(acItems[+it.dataset.i]);
+});
+$("q").addEventListener("blur", () => setTimeout(acHide, 150));
+
+$("searchForm").addEventListener("submit", e => {
+  e.preventDefault();
+  if (acItems.length){ acPick(acItems[acSel >= 0 ? acSel : 0]); return; }
+  $("q").blur(); $("go").click();
+});
 $("gps").addEventListener("click", useMyLocation);
 $("tip").addEventListener("click", () => window.open(TIP_URL, "_blank", "noopener"));
 
