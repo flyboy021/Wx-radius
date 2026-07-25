@@ -1268,7 +1268,7 @@ function speakAloud(){
 }
 // Auto-read once per new location when the setting is on.
 function maybeAutoRead(){
-  if (!getAutoRead()) return;
+  if (!getAutoRead() || scope === "route") return;   // area / single-airport only for now, not routes
   const key = center ? `${center.lat.toFixed(3)},${center.lon.toFixed(3)}` : null;
   if (!key || key === lastReadKey) return;
   lastReadKey = key;
