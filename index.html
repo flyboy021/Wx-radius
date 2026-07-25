@@ -1108,7 +1108,7 @@ function spokenName(name){
 }
 function spokenWind(s){
   if (s.wspd == null && s.wdir == null) return "";
-  if (s.wspd === 0) return "winds calm";
+  if (s.wspd != null && Number(s.wspd) === 0) return "winds calm";   // 00000KT
   const dir = (s.wdir === "VRB" || s.wdir == null) ? "variable" : digitWords(String(s.wdir).padStart(3,"0"));
   let t = `wind ${dir} at ${s.wspd} knots`;
   if (s.wgst) t += `, gusting ${s.wgst} knots`;
@@ -1121,11 +1121,16 @@ function spokenVisStr(v){
   s = s.replace(/(\d)\s+(one|three|five)/, "$1 and $2");
   return more ? s + " or more" : s;
 }
-function spokenVis(s){ return s.visib == null ? "" : `visibility ${spokenVisStr(s.visib)} statute miles`; }
+function spokenVisPhrase(v){
+  if (v == null) return "";
+  const num = abVisNum(v);
+  return `visibility ${spokenVisStr(v)} statute mile${(num != null && num <= 1) ? "" : "s"}`;
+}
+function spokenVis(s){ return spokenVisPhrase(s.visib); }
 function spokenCloudLayer(c){
   if (c.cover === "CLR") return "sky clear below one two thousand";
   if (["SKC","NSC","NCD"].includes(c.cover)) return "sky clear";
-  if (c.cover === "VV") return `vertical visibility ${c.base != null ? c.base : ""}`.trim();
+  if (c.cover === "VV") return c.base != null ? `indefinite ceiling at ${c.base} feet above ground level` : "indefinite ceiling";
   const lab = {FEW:"few clouds at", SCT:"scattered at", BKN:"broken at", OVC:"overcast at"}[c.cover];
   if (!lab) return "";
   return c.base != null ? `${lab} ${c.base.toLocaleString()}` : lab;
@@ -1142,7 +1147,7 @@ function spokenTemp(s){
   if (s.temp == null) return "";
   const w = n => n < 0 ? `minus ${Math.abs(n)}` : `${n}`;
   const d = s.dewp != null ? `, dewpoint ${w(Math.round(s.dewp))}` : "";
-  return `temperature ${w(Math.round(s.temp))} celsius${d}`;
+  return `temperature ${w(Math.round(s.temp))}${d}`;
 }
 function spokenAltim(s){
   const m = (s.rawOb || "").match(/\bA(\d{4})\b/);
@@ -1159,7 +1164,8 @@ function spokenRemarks(s){
 function spokenMetar(s){
   const tm = (s.rawOb || "").match(/\b\d{2}(\d{4})Z\b/);
   const pw = s.wxString ? (decodeWx(s.wxString) || "") : "";
-  const parts = [spokenName(s.name), tm ? `${digitWords(tm[1])} zulu` : "", "METAR",
+  const auto = /\bAUTO\b/.test(s.rawOb || "");
+  const parts = [spokenName(s.name), tm ? `${digitWords(tm[1])} zulu` : "", "METAR", auto ? "Automated" : "",
     spokenWind(s), spokenVis(s), pw, spokenClouds(s), spokenTemp(s), spokenAltim(s)].filter(Boolean);
   let text = parts.join(". ");
   const rmk = spokenRemarks(s);
@@ -1180,10 +1186,10 @@ function spokenTaf(t){
       const dir = (f.wdir === "VRB" || f.wdir == null) ? "variable" : digitWords(String(f.wdir).padStart(3,"0"));
       let w = `wind ${dir} at ${f.wspd} knots`; if (f.wgst) w += ` gusting ${f.wgst}`; bits.push(w);
     }
-    if (f.visib != null) bits.push(`visibility ${spokenVisStr(f.visib)} statute miles`);
+    if (f.visib != null) bits.push(spokenVisPhrase(f.visib));
     if (f.wxString){ const pw = decodeWx(f.wxString); if (pw) bits.push(pw); }
     if (f.clouds && f.clouds.length) bits.push(f.clouds.map(spokenCloudLayer).filter(Boolean).join(", "));
-    else if (f.vertVis != null) bits.push(`vertical visibility ${f.vertVis * 100}`);
+    else if (f.vertVis != null) bits.push(`indefinite ceiling at ${f.vertVis * 100} feet above ground level`);
     out.push(`${pre}, ${bits.join(", ")}`);
   });
   return out.join(". ") + ".";
@@ -2399,7 +2405,12 @@ $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
 updateGpsPrefStatus();
 $("gpsPrefReset").addEventListener("click", () => {
   localStorage.removeItem(GPS_PREF_KEY);
+  gpsOk = false;
   updateGpsPrefStatus();
+  const native = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+  setStatus(native
+    ? "Cleared. The device location permission is controlled by Android — to change it, open Settings → Apps → Vicinity → Permissions → Location."
+    : "Location choice reset — the app will ask again next time you use GPS.");
 });
 $("cogBtn").addEventListener("click", e => {
   e.stopPropagation();
