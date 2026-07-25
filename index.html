@@ -91,10 +91,15 @@
   .rb-vnr{color:var(--lifr);font-weight:800}
   #ribbon.rb-tappable{cursor:pointer}
   .rb-brief{color:var(--txt);font-weight:600}
-  .rb-caret{margin-left:auto;color:var(--muted);font-style:normal;transition:transform .15s}
+  .rb-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex:none}
+  .rb-speak{background:transparent;border:0;color:var(--muted);cursor:pointer;padding:0;
+    display:inline-flex;line-height:0}
+  .rb-speak.on{color:#2b6fff}
+  .rb-speak svg{width:18px;height:18px}
+  .rb-caret{color:var(--muted);font-style:normal;transition:transform .15s}
   #ribbon.exp .rb-caret{transform:rotate(180deg)}
   #briefPanel{display:none;background:var(--panel);border-bottom:1px solid var(--line)}
-  #briefPanel.open{display:block;padding:8px 12px;max-height:40vh;overflow-y:auto}
+  #briefPanel.open{display:block;padding:8px 12px;max-height:min(38vh,320px);overflow-y:auto}
   .bp-row{display:flex;gap:10px;align-items:baseline;padding:3px 0;font-size:13px}
   .bp-lbl{color:var(--muted);font-weight:600;min-width:110px;flex:none}
   .bp-txt{color:var(--txt);word-break:break-word}
@@ -1079,6 +1084,128 @@ function routeBrief(arr){
   if (!details.length) details.push({label:"", cat:"VFR", text:"VFR the whole way."});
   return {summary, details};
 }
+// ---- read aloud (free device text-to-speech) -----------------------------
+const SPEAKER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.8 5.5a9 9 0 0 1 0 13"/></svg>`;
+function digitWords(str){
+  const w = {"0":"zero","1":"one","2":"two","3":"three","4":"four","5":"five","6":"six","7":"seven","8":"eight","9":"nine"};
+  return String(str).split("").map(c => w[c] || c).join(" ");
+}
+function spokenName(name){
+  if (!name) return "the airport";
+  let n = name.split(",")[0].trim();
+  n = n.replace(/\b(Intl|Rgnl|Muni|Arpt|Fld|Natl|Cnty|Mem|AFB|MCAS|NAS|NAF|NALF|AAF|ANGB|ARB|Rgn|Spb)\b/g, m => ({
+    Intl:"International", Rgnl:"Regional", Rgn:"Regional", Muni:"Municipal", Arpt:"airport", Fld:"Field",
+    Natl:"National", Cnty:"County", Mem:"Memorial", AFB:"Air Force Base", MCAS:"Marine Corps Air Station",
+    NAS:"Naval Air Station", NAF:"Naval Air Facility", NALF:"Naval Auxiliary Landing Field",
+    AAF:"Army Airfield", ANGB:"Air National Guard Base", ARB:"Air Reserve Base", Spb:"Seaplane Base"
+  }[m] || m));
+  if (!/airport|field|base|station/i.test(n)) n += " airport";
+  return n;
+}
+function spokenWind(s){
+  if (s.wspd == null && s.wdir == null) return "";
+  if (s.wspd === 0) return "winds calm";
+  const dir = (s.wdir === "VRB" || s.wdir == null) ? "variable" : digitWords(String(s.wdir).padStart(3,"0"));
+  let t = `wind ${dir} at ${s.wspd} knots`;
+  if (s.wgst) t += `, gusting ${s.wgst} knots`;
+  return t;
+}
+function spokenVisStr(v){
+  let s = String(v); const more = s.includes("+"); s = s.replace("+","").trim();
+  s = s.replace("1/2","one half").replace("1/4","one quarter").replace("3/4","three quarters")
+       .replace("1/8","one eighth").replace("3/8","three eighths").replace("5/8","five eighths").replace("1/16","one sixteenth");
+  s = s.replace(/(\d)\s+(one|three|five)/, "$1 and $2");
+  return more ? s + " or more" : s;
+}
+function spokenVis(s){ return s.visib == null ? "" : `visibility ${spokenVisStr(s.visib)} statute miles`; }
+function spokenCloudLayer(c){
+  if (["CLR","SKC","NSC","NCD"].includes(c.cover)) return "sky clear";
+  if (c.cover === "VV") return `vertical visibility ${c.base != null ? c.base : ""}`.trim();
+  const lab = {FEW:"few clouds at", SCT:"scattered at", BKN:"broken at", OVC:"overcast at"}[c.cover];
+  if (!lab) return "";
+  return c.base != null ? `${lab} ${c.base.toLocaleString()}` : lab;
+}
+function spokenClouds(s){
+  if (!s.clouds || !s.clouds.length) return (s.cover === "CLR" || s.cover === "SKC") ? "sky clear" : "";
+  return s.clouds.map(spokenCloudLayer).filter(Boolean).join(", ");
+}
+function spokenTemp(s){
+  if (s.temp == null) return "";
+  const w = n => n < 0 ? `minus ${Math.abs(n)}` : `${n}`;
+  const d = s.dewp != null ? `, dewpoint ${w(Math.round(s.dewp))}` : "";
+  return `temperature ${w(Math.round(s.temp))} celsius${d}`;
+}
+function spokenAltim(s){
+  const m = (s.rawOb || "").match(/\bA(\d{4})\b/);
+  if (m) return `altimeter ${digitWords(m[1])}`;
+  if (s.altim != null) return `altimeter ${(s.altim * 0.02953).toFixed(2)}`;
+  return "";
+}
+function spokenRemarks(s){
+  const rmk = decodeRemarks(s.rawOb) || [];
+  const sig = rmk.filter(r => /thunderstorm|lightning|rain|snow|hail|drizzle|funnel|tornado|waterspout|freezing|rising rapidly|falling rapidly|squall|virga|dust|sand|fog|mist|smoke|volcanic|wind shift|peak wind|gust/i.test(r))
+    .map(r => r.replace(/<[^>]+>/g, "").trim());
+  return sig.join(", ");
+}
+function spokenMetar(s){
+  const tm = (s.rawOb || "").match(/\b\d{2}(\d{4})Z\b/);
+  const pw = s.wxString ? (decodeWx(s.wxString) || "") : "";
+  const parts = [spokenName(s.name), tm ? `${digitWords(tm[1])} zulu` : "", "METAR",
+    spokenWind(s), spokenVis(s), pw, spokenClouds(s), spokenTemp(s), spokenAltim(s)].filter(Boolean);
+  let text = parts.join(". ");
+  const rmk = spokenRemarks(s);
+  if (rmk) text += `. Remarks, ${rmk}`;
+  return text + ".";
+}
+function spokenTime(epoch){ const d = new Date(epoch * 1000); return digitWords(String(d.getUTCHours()).padStart(2,"0") + String(d.getUTCMinutes()).padStart(2,"0")); }
+function spokenTaf(t){
+  if (!t || !t.fcsts || !t.fcsts.length) return "";
+  const out = ["T A F forecast"];
+  t.fcsts.forEach((f, i) => {
+    let pre = `from ${spokenTime(f.timeFrom)} zulu`;
+    if (i > 0 && f.fcstChange === "BECMG") pre = `becoming ${spokenTime(f.timeFrom)} zulu`;
+    else if (f.fcstChange === "TEMPO") pre = `temporary ${spokenTime(f.timeFrom)} zulu`;
+    else if (f.probability) pre = `${f.probability} percent chance ${spokenTime(f.timeFrom)} zulu`;
+    const bits = [];
+    if (f.wdir != null || f.wspd != null){
+      const dir = (f.wdir === "VRB" || f.wdir == null) ? "variable" : digitWords(String(f.wdir).padStart(3,"0"));
+      let w = `wind ${dir} at ${f.wspd} knots`; if (f.wgst) w += ` gusting ${f.wgst}`; bits.push(w);
+    }
+    if (f.visib != null) bits.push(`visibility ${spokenVisStr(f.visib)} statute miles`);
+    if (f.wxString){ const pw = decodeWx(f.wxString); if (pw) bits.push(pw); }
+    if (f.clouds && f.clouds.length) bits.push(f.clouds.map(spokenCloudLayer).filter(Boolean).join(", "));
+    else if (f.vertVis != null) bits.push(`vertical visibility ${f.vertVis * 100}`);
+    out.push(`${pre}, ${bits.join(", ")}`);
+  });
+  return out.join(". ") + ".";
+}
+function closestStation(){
+  const arr = visibleStations().filter(s => !isStale(s));
+  if (!center) return arr[0] || lastStations[0];
+  let best = Infinity, s = null;
+  for (const x of arr){ const d = distanceNm(center.lat, center.lon, x.lat, x.lon); if (d < best){ best = d; s = x; } }
+  return s || lastStations[0];
+}
+function updateSpeakBtn(on){ const b = $("speakBtn"); if (b) b.classList.toggle("on", on); }
+function speakAloud(){
+  const synth = window.speechSynthesis;
+  if (!synth){ setStatus("Read‑aloud isn't supported on this device.", true); return; }
+  if (synth.speaking || synth.pending){ synth.cancel(); updateSpeakBtn(false); return; }
+  const arr = visibleStations();
+  const s = closestStation();
+  if (!s){ setStatus("No nearby weather to read."); return; }
+  let brief = (scope === "route" ? routeBrief(arr) : areaBrief(arr)).summary
+    .replace(/ — /g, " with ").replace(/ & /g, " and ");
+  if (scope !== "route" && !/the area/i.test(brief)) brief = brief.replace(/\.\s*$/, "") + " throughout the area.";
+  const text = [brief, spokenMetar(s), s.taf ? spokenTaf(s.taf) : ""].filter(Boolean).join(" ");
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.96;
+  u.onend = () => updateSpeakBtn(false);
+  u.onerror = () => updateSpeakBtn(false);
+  synth.cancel();
+  synth.speak(u);
+  updateSpeakBtn(true);
+}
 function updateRibbon(arr){
   const el = $("ribbon"); if (!el) return;
   const p = $("briefPanel");
@@ -1086,14 +1213,23 @@ function updateRibbon(arr){
   if (!arr || !arr.length){ el.style.display = "none"; collapse(); return; }
   const brief = (scope === "route") ? routeBrief(arr) : areaBrief(arr);
   lastBriefDetails = brief.details;
-  el.innerHTML = `<span class="rb-brief">${brief.summary}</span>` + (brief.details.length ? `<i class="rb-caret">▾</i>` : "");
-  el.classList.toggle("rb-tappable", brief.details.length > 0);
+  el.innerHTML = `<span class="rb-brief">${brief.summary}</span>`
+    + `<span class="rb-right"><button type="button" id="speakBtn" class="rb-speak" aria-label="Read the nearest weather aloud" title="Read aloud">${SPEAKER_SVG}</button>`
+    + (brief.details.length ? `<i class="rb-caret">▾</i>` : "")
+    + `</span>`;
+  el.classList.add("rb-tappable");
+  if (window.speechSynthesis && speechSynthesis.speaking) updateSpeakBtn(true);
   el.style.display = "flex";
   collapse();   // close details on data refresh
 }
 function toggleBriefPanel(){
   const p = $("briefPanel"), el = $("ribbon"); if (!p) return;
-  if (p.classList.contains("open")){ p.classList.remove("open"); p.innerHTML = ""; el.classList.remove("exp"); return; }
+  // Closing: collapse, then let the map grow back.
+  if (p.classList.contains("open")){
+    p.classList.remove("open"); p.innerHTML = ""; el.classList.remove("exp");
+    setTimeout(() => map.invalidateSize(), 40);
+    return;
+  }
   if (!lastBriefDetails.length) return;
   p.innerHTML = lastBriefDetails.map(d => {
     const pill = d.cat ? `<span class="bp-pill" style="background:${catColor(d.cat)}">${d.cat}</span>` : "";
@@ -1101,6 +1237,13 @@ function toggleBriefPanel(){
     return `<div class="bp-row">${lab}<span class="bp-txt">${pill}${d.text}</span></div>`;
   }).join("");
   p.classList.add("open"); el.classList.add("exp");
+  // The panel shrinks the map; resize it and re-center on the searched/GPS airport (or the
+  // route) so what you're looking at stays visible in the smaller map area.
+  setTimeout(() => {
+    map.invalidateSize();
+    if (scope === "route" && route.length) map.fitBounds(routeBoundsLL(), {padding:[26,26]});
+    else if (center) map.setView([center.lat, center.lon], map.getZoom(), {animate:false});
+  }, 40);
 }
 function youIcon(){
   return L.divIcon({className:"", html:`<div class="you"></div>`, iconSize:[16,16], iconAnchor:[8,8]});
@@ -2266,7 +2409,10 @@ $("rpChips").addEventListener("click", e => {
   if (scope === "route"){ if (route.length >= 2) loadRoute(); else drawRoute(); }
 });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
-$("ribbon").addEventListener("click", toggleBriefPanel);
+$("ribbon").addEventListener("click", e => {
+  if (e.target.closest("#speakBtn")){ e.stopPropagation(); speakAloud(); return; }
+  toggleBriefPanel();
+});
 
 // ---- AI weather brief ------------------------------------------------------
 const AI_API = (PROXY_BASE || "") + "/api/summarize";
