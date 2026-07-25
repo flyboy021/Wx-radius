@@ -315,6 +315,10 @@
             <span class="set-label">Location access<br><span id="gpsPrefStatus" class="set-sub"></span></span>
             <button id="gpsPrefReset" class="toggle" title="Forget the saved choice and ask again next time">Reset</button>
           </div>
+          <div class="set-row">
+            <span class="set-label">Read weather aloud on load</span>
+            <button id="autoReadPref" class="toggle" title="Automatically read the area brief and nearest weather when it loads">Off</button>
+          </div>
           <button id="tip" class="tip">☕ Tip the dev</button>
         </div>
       </div>
@@ -1119,14 +1123,19 @@ function spokenVisStr(v){
 }
 function spokenVis(s){ return s.visib == null ? "" : `visibility ${spokenVisStr(s.visib)} statute miles`; }
 function spokenCloudLayer(c){
-  if (["CLR","SKC","NSC","NCD"].includes(c.cover)) return "sky clear";
+  if (c.cover === "CLR") return "sky clear below one two thousand";
+  if (["SKC","NSC","NCD"].includes(c.cover)) return "sky clear";
   if (c.cover === "VV") return `vertical visibility ${c.base != null ? c.base : ""}`.trim();
   const lab = {FEW:"few clouds at", SCT:"scattered at", BKN:"broken at", OVC:"overcast at"}[c.cover];
   if (!lab) return "";
   return c.base != null ? `${lab} ${c.base.toLocaleString()}` : lab;
 }
 function spokenClouds(s){
-  if (!s.clouds || !s.clouds.length) return (s.cover === "CLR" || s.cover === "SKC") ? "sky clear" : "";
+  if (!s.clouds || !s.clouds.length){
+    if (s.cover === "CLR") return "sky clear below one two thousand";
+    if (s.cover === "SKC") return "sky clear";
+    return "";
+  }
   return s.clouds.map(spokenCloudLayer).filter(Boolean).join(", ");
 }
 function spokenTemp(s){
@@ -1160,7 +1169,7 @@ function spokenMetar(s){
 function spokenTime(epoch){ const d = new Date(epoch * 1000); return digitWords(String(d.getUTCHours()).padStart(2,"0") + String(d.getUTCMinutes()).padStart(2,"0")); }
 function spokenTaf(t){
   if (!t || !t.fcsts || !t.fcsts.length) return "";
-  const out = ["T A F forecast"];
+  const out = ["Terminal Area Forecast"];
   t.fcsts.forEach((f, i) => {
     let pre = `from ${spokenTime(f.timeFrom)} zulu`;
     if (i > 0 && f.fcstChange === "BECMG") pre = `becoming ${spokenTime(f.timeFrom)} zulu`;
@@ -1187,24 +1196,58 @@ function closestStation(){
   return s || lastStations[0];
 }
 function updateSpeakBtn(on){ const b = $("speakBtn"); if (b) b.classList.toggle("on", on); }
+// Native Capacitor TTS when available (Android/iOS webview has no Web Speech API), else browser speech.
+const capTTS = () => (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TextToSpeech) || null;
+let speaking = false, lastReadKey = null;
+function stopSpeak(){
+  speaking = false;
+  const t = capTTS(); if (t) t.stop().catch(() => {});
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  updateSpeakBtn(false);
+}
+function speakOne(text){
+  return new Promise(resolve => {
+    if (!text){ resolve(); return; }
+    const t = capTTS();
+    if (t){ t.speak({text, lang:"en-US", rate:1.0}).then(resolve, resolve); return; }
+    if (window.speechSynthesis){
+      const u = new SpeechSynthesisUtterance(text); u.rate = 0.96;
+      u.onend = resolve; u.onerror = resolve;
+      speechSynthesis.speak(u); return;
+    }
+    resolve();
+  });
+}
+async function speakSegments(segs){
+  stopSpeak(); speaking = true; updateSpeakBtn(true);
+  for (let i = 0; i < segs.length; i++){
+    if (!speaking) break;
+    await speakOne(segs[i]);
+    if (!speaking) break;
+    if (i < segs.length - 1) await sleep(700);   // ~0.7s pause between brief, METAR and TAF
+  }
+  speaking = false; updateSpeakBtn(false);
+}
 function speakAloud(){
-  const synth = window.speechSynthesis;
-  if (!synth){ setStatus("Read‑aloud isn't supported on this device.", true); return; }
-  if (synth.speaking || synth.pending){ synth.cancel(); updateSpeakBtn(false); return; }
+  if (speaking){ stopSpeak(); return; }
+  if (!capTTS() && !window.speechSynthesis){ setStatus("Read‑aloud isn't available on this device."); return; }
   const arr = visibleStations();
   const s = closestStation();
   if (!s){ setStatus("No nearby weather to read."); return; }
   let brief = (scope === "route" ? routeBrief(arr) : areaBrief(arr)).summary
     .replace(/ — /g, " with ").replace(/ & /g, " and ");
   if (scope !== "route" && !/the area/i.test(brief)) brief = brief.replace(/\.\s*$/, "") + " throughout the area.";
-  const text = [brief, spokenMetar(s), s.taf ? spokenTaf(s.taf) : ""].filter(Boolean).join(" ");
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 0.96;
-  u.onend = () => updateSpeakBtn(false);
-  u.onerror = () => updateSpeakBtn(false);
-  synth.cancel();
-  synth.speak(u);
-  updateSpeakBtn(true);
+  const segs = [brief, spokenMetar(s)];
+  if (s.taf) segs.push(spokenTaf(s.taf));
+  speakSegments(segs);
+}
+// Auto-read once per new location when the setting is on.
+function maybeAutoRead(){
+  if (!getAutoRead()) return;
+  const key = center ? `${center.lat.toFixed(3)},${center.lon.toFixed(3)}` : null;
+  if (!key || key === lastReadKey) return;
+  lastReadKey = key;
+  setTimeout(speakAloud, 500);
 }
 function updateRibbon(arr){
   const el = $("ribbon"); if (!el) return;
@@ -1512,6 +1555,7 @@ async function loadRoute(){
     if (lastStations[0]) updateFavicon(lastStations[0].fltCat);
     lastUpdate = new Date(); setUpdated();
     setStatus(lastStations.length ? "" : "No reporting stations along this route.");
+    maybeAutoRead();
   }catch(e){ setStatus(e.message || "Could not load route", true); }
 }
 // ---- waypoint management ----
@@ -2012,6 +2056,7 @@ async function load(c, opts){
       : "Vicinity";
     lastUpdate = new Date(); setUpdated();
     setStatus(lastStations.length ? "" : "No reporting stations found.");
+    maybeAutoRead();
   }catch(e){
     setStatus(e.message || "Could not load weather", true);
   }
@@ -2343,6 +2388,14 @@ function setSkipIntroPref(on){
 }
 setSkipIntroPref(getSkipIntroPref());
 $("skipIntroPref").addEventListener("click", () => setSkipIntroPref(!getSkipIntroPref()));
+const AUTO_READ_KEY = "wxradius.autoRead";
+function getAutoRead(){ return localStorage.getItem(AUTO_READ_KEY) === "1"; }
+function setAutoRead(on){
+  localStorage.setItem(AUTO_READ_KEY, on ? "1" : "0");
+  const b = $("autoReadPref"); b.textContent = on ? "On" : "Off"; b.classList.toggle("on", on);
+}
+setAutoRead(getAutoRead());
+$("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
 updateGpsPrefStatus();
 $("gpsPrefReset").addEventListener("click", () => {
   localStorage.removeItem(GPS_PREF_KEY);
