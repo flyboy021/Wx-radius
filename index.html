@@ -704,13 +704,13 @@ function decodeWx(wx){
   if (!wx) return null;
   return wx.split(/\s+/).map(tok => {
     if (tok === "+FC") return "tornado/waterspout";
-    let out = "", t = tok;
+    let out = "", t = tok, vic = false;
     if (t[0] === "-"){ out += "light "; t = t.slice(1); }
     else if (t[0] === "+"){ out += "heavy "; t = t.slice(1); }
-    if (t.startsWith("VC")){ out += "nearby "; t = t.slice(2); }
+    if (t.startsWith("VC")){ vic = true; t = t.slice(2); }
     const words = [];
     for (let i = 0; i < t.length; i += 2){ const p = t.slice(i, i+2); if (WX_MAP[p]) words.push(WX_MAP[p]); }
-    return (out + words.join(" ")).trim();
+    return ((out + words.join(" ")).trim() + (vic ? " in the vicinity" : "")).trim();
   }).filter(Boolean).join(", ");
 }
 const TAF_COVER = {FEW:"few", SCT:"scattered", BKN:"broken", OVC:"overcast",
@@ -1176,7 +1176,7 @@ function spokenAltim(s){
 }
 function spokenRemarks(s){
   const rmk = decodeRemarks(s.rawOb) || [];
-  const sig = rmk.filter(r => /thunderstorm|lightning|rain|snow|hail|drizzle|funnel|tornado|waterspout|freezing|rising rapidly|falling rapidly|squall|virga|dust|sand|fog|mist|smoke|volcanic|wind shift|peak wind|gust/i.test(r))
+  const sig = rmk.filter(r => /thunderstorm|lightning|rain|snow|hail|drizzle|funnel|tornado|waterspout|freezing|rising rapidly|falling rapidly|squall|virga|dust|sand|fog|mist|smoke|volcanic|wind shift|peak wind|gust|cumulonimbus|towering cumulus|altocumulus/i.test(r))
     .map(r => r.replace(/<[^>]+>/g, "").trim());
   return sig.join(", ");
 }
