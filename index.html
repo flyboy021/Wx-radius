@@ -2167,25 +2167,66 @@ let aiSpeaking = false;
 function stationLine(s){
   const dist = s.dist != null ? `${fmtDist(s.dist)} away` : "";
   const role = s.routeRole === "dep" ? " [departure]" : s.routeRole === "dest" ? " [destination]" : "";
-  let line = `${s.icaoId}${role} (${dist}): ${s.rawOb || "no current METAR"}`;
+  const label = s.name ? `${s.icaoId} — ${s.name}` : s.icaoId;
+  let line = `${label}${role} (${dist}): ${s.rawOb || "no current METAR"}`;
   if (s.taf && s.taf.rawTAF) line += `\nTAF: ${s.taf.rawTAF}`;
   return line;
 }
+
+function waypointLabel(p){ return p.name ? `${p.name} (${p.id})` : p.id; }
 
 function buildBriefPrompt(kind){
   const arr = (lastStations || []).slice().sort((a,b) => (a.dist||0) - (b.dist||0)).slice(0, 20);
   const lines = arr.map(stationLine).join("\n\n");
   if (kind === "route"){
-    const ids = route.map(p => p.id).join(" → ");
-    return `Route: ${ids}. Give the pilot a spoken-style briefing of the weather along this route, ` +
-      `departure to destination, using the stations below (nearest first):\n\n${lines}`;
+    const names = route.map(waypointLabel).join(" → ");
+    return `Route: ${names}. Give the pilot a spoken-style briefing of the weather along this route, ` +
+      `departure to destination, using the stations below (nearest first). Refer to each airport by its ` +
+      `name, not its ICAO identifier:\n\n${lines}`;
   }
   const where = scope === "region" ? regionName(center) : (center ? `${center.name}, ${radiusNm} nm radius` : "the area");
   return `Area: ${where}. Give the pilot a spoken-style briefing of the current weather in this area, ` +
-    `using the stations below (nearest first):\n\n${lines}`;
+    `using the stations below (nearest first). Refer to each airport by its name, not its ICAO identifier:\n\n${lines}`;
+}
+
+// Voices load async in most browsers — cache the list once available.
+let cachedVoices = [];
+function loadAiVoices(){ cachedVoices = window.speechSynthesis ? window.speechSynthesis.getVoices() : []; }
+if (window.speechSynthesis){
+  loadAiVoices();
+  window.speechSynthesis.onvoiceschanged = loadAiVoices;
+}
+// Prefer higher-quality/"natural" voices over the default robotic system voice.
+const AI_VOICE_PREFS = [
+  /natural/i, /enhanced/i, /premium/i, /neural/i,
+  /^Google US English$/, /^Samantha$/, /^Ava/, /^Siri/,
+];
+function pickAiVoice(){
+  const voices = cachedVoices.length ? cachedVoices : (window.speechSynthesis ? window.speechSynthesis.getVoices() : []);
+  const en = voices.filter(v => /^en/i.test(v.lang));
+  for (const pref of AI_VOICE_PREFS){
+    const m = en.find(v => pref.test(v.name));
+    if (m) return m;
+  }
+  return en[0] || voices[0] || null;
+}
+
+let aiSpeechQueue = [];
+function speakAiQueue(){
+  if (!aiSpeechQueue.length){ stopAiSpeech(); return; }
+  const text = aiSpeechQueue.shift();
+  const utter = new SpeechSynthesisUtterance(text);
+  const voice = pickAiVoice();
+  if (voice) utter.voice = voice;
+  utter.rate = 1.02;
+  utter.pitch = 1;
+  utter.onend = speakAiQueue;
+  utter.onerror = stopAiSpeech;
+  window.speechSynthesis.speak(utter);
 }
 
 function stopAiSpeech(){
+  aiSpeechQueue = [];
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   aiSpeaking = false;
   const btn = $("aiReadBtn");
@@ -2232,13 +2273,11 @@ $("aiCloseBtn").addEventListener("click", closeAiPanel);
 $("aiReadBtn").addEventListener("click", () => {
   if (!window.speechSynthesis) return;
   if (aiSpeaking){ stopAiSpeech(); return; }
-  const utter = new SpeechSynthesisUtterance($("aiBody").textContent);
-  utter.onend = stopAiSpeech;
-  utter.onerror = stopAiSpeech;
+  aiSpeechQueue = $("aiBody").textContent.split(/(?<=[.!?])\s+/).filter(Boolean);
   aiSpeaking = true;
   $("aiReadBtn").textContent = "⏸ Stop";
   $("aiReadBtn").classList.add("on");
-  window.speechSynthesis.speak(utter);
+  speakAiQueue();
 });
 $("modeBtn").addEventListener("click", () => {
   metarMode = metarMode === "raw" ? "plain" : "raw";
