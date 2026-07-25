@@ -458,6 +458,12 @@ const STALE_GREY = "#8a93a0";
 function metarAgeMin(s){ return s.obsTime ? (Date.now()/1000 - s.obsTime) / 60 : Infinity; }
 function isStale(s){ return metarAgeMin(s) > STALE_MIN; }
 function stnColor(s){ return isStale(s) ? STALE_GREY : catColor(s.fltCat); }
+// Military fields are often part-time; their old obs are misleading, so we hide them once
+// the METAR is more than an hour old (detected by military markers in the station name).
+const MIL_STALE_MIN = 60;
+const MIL_RE = /\b(AFB|MCAS|MCAF|MCALF|MCAGCC|NAS|NAF|NALF|NAWS|NAWC|ARB|ANGB|AAF|AAP|AHP|CGAS|NS)\b|JOINT BASE|NAVAL AIR|AIR FORCE|MARINE CORPS/i;
+function isMilitary(s){ return !!(s && s.name && MIL_RE.test(s.name)); }
+function militaryStale(s){ return isMilitary(s) && metarAgeMin(s) > MIL_STALE_MIN; }
 
 // ---- plain-English decoding --------------------------------------------
 function fmtWind(s){
@@ -1020,7 +1026,8 @@ function setStatus(msg, isErr){
   el.style.display = msg ? "block" : "none";
 }
 function visibleStations(){
-  return lastStations;   // always show every reporting station
+  // Show every reporting station, except military fields whose METAR is over an hour old.
+  return lastStations.filter(s => !militaryStale(s));
 }
 
 // ===== ROUTE FEATURE =====================================================
@@ -2018,7 +2025,7 @@ $("go").addEventListener("click", async () => {
     if (route.length >= 2) loadRoute(); else setStatus("");
     return;
   }
-  try{ setStatus("Searching…"); exitRouteMode(); await load(await geocode(raw)); }
+  try{ setStatus("Searching…"); exitRouteMode(); const hit = await geocode(raw); await load(hit); militaryStaleNotice(null, hit.name, hit.lat, hit.lon); }
   catch(e){ setStatus(e.message, true); }
 });
 $("skipBtn").addEventListener("click", skipIntro);
@@ -2053,11 +2060,23 @@ function acSearch(qRaw){
   }
   acRender(out.slice(0, 8));
 }
-function acPick(a){
+async function acPick(a){
   if (!a) return;
   acHide(); $("q").value = a.icaoId; $("q").blur();
   cancelIntro(); exitRouteMode(); setStatus("Searching…");
-  load({lat:a.lat, lon:a.lon, name:a.name || a.icaoId});
+  await load({lat:a.lat, lon:a.lon, name:a.name || a.icaoId});
+  militaryStaleNotice(a.icaoId, a.name, a.lat, a.lon);
+}
+// When a searched airport is a military field with no fresh weather, explain instead of showing nothing.
+function militaryStaleNotice(icaoId, name, lat, lon){
+  if (!(name && MIL_RE.test(name))) return;
+  let s = null, best = Infinity;
+  for (const x of lastStations){ const d = distanceNm(lat, lon, x.lat, x.lon); if (d < best){ best = d; s = x; } }
+  const onField = s && best <= 3;
+  if (onField && metarAgeMin(s) <= MIL_STALE_MIN) return;   // fresh — shown normally, no notice
+  const label = icaoId || (name.split("/").pop() || name).trim();
+  if (onField) setStatus(`${label} (military) — latest METAR is ${agoStr(s.obsTime * 1000)}, over an hour old, so it isn't shown on the map.`);
+  else setStatus(`${label} (military) — no current weather (last report over an hour old), so it isn't shown.`);
 }
 function acHighlight(){ [...$("acList").children].forEach((c,i)=> c.classList.toggle("sel", i===acSel)); }
 $("q").addEventListener("focus", () => { loadAirportsIndex().then(() => { if (document.activeElement === $("q")) acSearch($("q").value); }); });
