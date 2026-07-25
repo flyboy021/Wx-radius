@@ -111,6 +111,7 @@
   @keyframes tipPulse{0%{box-shadow:0 0 0 0 rgba(43,111,255,.55)}
     70%{box-shadow:0 0 0 9px rgba(43,111,255,0)}100%{box-shadow:0 0 0 0 rgba(43,111,255,0)}}
   .tip-hint{animation:tipPulse 1.3s ease-out infinite;border-radius:50%}
+  .set-ver{margin-top:8px;text-align:center;font-size:11px;opacity:.5}
   #briefPanel{display:none;background:var(--panel);border-bottom:1px solid var(--line)}
   #briefPanel.open{display:block;padding:8px 12px;max-height:min(38vh,320px);overflow-y:auto}
   .bp-row{display:flex;gap:10px;align-items:baseline;padding:3px 0;font-size:13px}
@@ -333,6 +334,7 @@
             <button id="autoReadPref" class="toggle" title="Automatically read the area brief and nearest weather when it loads">Off</button>
           </div>
           <button id="tip" class="tip">☕ Tip the dev</button>
+          <div id="setVer" class="set-ver"></div>
         </div>
       </div>
     </div>
@@ -1289,9 +1291,23 @@ function maybeAutoRead(delay){
   setTimeout(() => {
     const s = closestStation();
     const m = s && markersByIcao[s.icaoId];
-    if (m) m.openPopup();   // show the METAR/TAF popup for the station being read
-    speakAloud();
+    if (m){
+      const p = m.getPopup && m.getPopup();
+      if (p) p.options.autoPan = false;   // don't let the popup shove the map off-center
+      m.openPopup();
+    }
+    // On the web, speech is blocked until the first user gesture — so if we haven't
+    // been primed yet, play the read the instant the user first touches the screen.
+    if (!capTTS() && !speechPrimed) armReadOnGesture();
+    else speakAloud();
   }, delay || 500);
+}
+function armReadOnGesture(){
+  const fire = () => {
+    ["pointerdown","touchend","keydown"].forEach(ev => window.removeEventListener(ev, fire));
+    primeSpeech(); speakAloud();
+  };
+  ["pointerdown","touchend","keydown"].forEach(ev => window.addEventListener(ev, fire, {passive:true}));
 }
 function updateRibbon(arr){
   const el = $("ribbon"); if (!el) return;
@@ -2441,6 +2457,8 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
+const APP_BUILD = "134";   // bump alongside sw.js CACHE so Settings shows the live version
+{ const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
 function tipVisible(){ const t = $("tipAutospeak"); return t && t.style.display !== "none"; }
