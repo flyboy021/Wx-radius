@@ -2222,21 +2222,46 @@ function pickAiVoice(){
 }
 
 let aiSpeechQueue = [];
+// iOS Safari has shipped WebKit builds that silently drop an utterance if nothing
+// else holds a reference to it (garbage-collected before it starts) — keep one here.
+let currentAiUtterance = null;
+// iOS Safari also stops speaking after ~15s of a session unless nudged periodically.
+let aiKeepAliveTimer = null;
+function startAiKeepAlive(){
+  stopAiKeepAlive();
+  aiKeepAliveTimer = setInterval(() => {
+    if (!window.speechSynthesis || !window.speechSynthesis.speaking) return;
+    window.speechSynthesis.pause();
+    window.speechSynthesis.resume();
+  }, 10000);
+}
+function stopAiKeepAlive(){
+  if (aiKeepAliveTimer) { clearInterval(aiKeepAliveTimer); aiKeepAliveTimer = null; }
+}
+
 function speakAiQueue(){
   if (!aiSpeechQueue.length){ stopAiSpeech(); return; }
   const text = aiSpeechQueue.shift();
   const utter = new SpeechSynthesisUtterance(text);
+  currentAiUtterance = utter;   // prevent GC mid-utterance (iOS Safari bug)
   const voice = pickAiVoice();
   if (voice) utter.voice = voice;
+  utter.lang = (voice && voice.lang) || "en-US";
   utter.rate = 1.02;
   utter.pitch = 1;
   utter.onend = speakAiQueue;
   utter.onerror = stopAiSpeech;
+  // iOS Safari can leave the synthesis queue "paused" after a navigation/reload;
+  // resume() is a harmless no-op elsewhere but required there for speak() to be heard.
+  window.speechSynthesis.resume();
   window.speechSynthesis.speak(utter);
+  startAiKeepAlive();
 }
 
 function stopAiSpeech(){
   aiSpeechQueue = [];
+  currentAiUtterance = null;
+  stopAiKeepAlive();
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   aiSpeaking = false;
   const btn = $("aiReadBtn");
@@ -2282,8 +2307,12 @@ $("aiBriefBtn").addEventListener("click", () => runAiSummary("area"));
 $("aiRouteBriefBtn").addEventListener("click", () => runAiSummary("route"));
 $("aiCloseBtn").addEventListener("click", closeAiPanel);
 $("aiReadBtn").addEventListener("click", () => {
-  if (!window.speechSynthesis) return;
+  if (!window.speechSynthesis){
+    setStatus("Text-to-speech isn't supported in this browser.", true);
+    return;
+  }
   if (aiSpeaking){ stopAiSpeech(); return; }
+  loadAiVoices();   // re-check — iOS Safari often has voices ready by now even if onvoiceschanged never fired
   aiSpeechQueue = $("aiBody").textContent.split(/(?<=[.!?])\s+/).filter(Boolean);
   aiSpeaking = true;
   $("aiReadBtn").textContent = "⏸ Stop";

@@ -23,8 +23,9 @@ const SUMMARY_SYSTEM = "You are a concise VFR/IFR aviation weather briefer speak
   "poor visibility, strong/gusty wind, thunderstorms, icing, IFR trends). Keep it under 150 words, " +
   "use short sentences, and avoid raw METAR/TAF jargon codes. Refer to airports by their spoken " +
   "name (e.g. \"Wichita\" instead of \"KICT\") whenever a name is given in the data; only fall back " +
-  "to spelling out the identifier if no name is available. End with a one-line reminder that this " +
-  "is not an official weather briefing.";
+  "to spelling out the identifier if no name is available. Write in plain prose only — no markdown, " +
+  "no asterisks, no bullet points, no headers — since this is read aloud as speech. End with a " +
+  "one-line reminder that this is not an official weather briefing.";
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
