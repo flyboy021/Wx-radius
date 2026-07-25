@@ -1184,7 +1184,7 @@ function spokenMetar(s){
   const tm = (s.rawOb || "").match(/\b\d{2}(\d{4})Z\b/);
   const pw = s.wxString ? (decodeWx(s.wxString) || "") : "";
   const auto = /\bAUTO\b/.test(s.rawOb || "");
-  const parts = [spokenName(s.name), tm ? `${digitWords(tm[1])} zulu` : "", "Meetar", auto ? "Automated" : "",
+  const parts = [spokenName(s.name), tm ? `${digitWords(tm[1])} zulu` : "", "Mee tar", auto ? "Automated" : "",
     spokenWind(s), spokenVis(s), pw, spokenClouds(s), spokenTemp(s), spokenAltim(s)].filter(Boolean);
   let text = parts.join(". ");
   const rmk = spokenRemarks(s);
@@ -1267,17 +1267,19 @@ function speakAloud(){
   speakSegments(segs);
 }
 // Auto-read once per new location when the setting is on.
-function maybeAutoRead(){
+function maybeAutoRead(delay){
   if (!getAutoRead() || scope === "route") return;   // area / single-airport only for now, not routes
   const key = center ? `${center.lat.toFixed(3)},${center.lon.toFixed(3)}` : null;
   if (!key || key === lastReadKey) return;
   lastReadKey = key;
+  // Wait for any map fly animation to finish before opening the popup + speaking,
+  // otherwise the popup/speech starts mid-flight and the audio gets cut off.
   setTimeout(() => {
     const s = closestStation();
     const m = s && markersByIcao[s.icaoId];
     if (m) m.openPopup();   // show the METAR/TAF popup for the station being read
     speakAloud();
-  }, 500);
+  }, delay || 500);
 }
 function updateRibbon(arr){
   const el = $("ribbon"); if (!el) return;
@@ -2086,7 +2088,7 @@ async function load(c, opts){
       : "Vicinity";
     lastUpdate = new Date(); setUpdated();
     setStatus(lastStations.length ? "" : "No reporting stations found.");
-    maybeAutoRead();
+    maybeAutoRead(opts.animate ? 1800 : 500);   // longer wait after the intro fly-in so speech isn't cut off
   }catch(e){
     setStatus(e.message || "Could not load weather", true);
   }
