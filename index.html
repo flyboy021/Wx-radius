@@ -1253,7 +1253,12 @@ function maybeAutoRead(){
   const key = center ? `${center.lat.toFixed(3)},${center.lon.toFixed(3)}` : null;
   if (!key || key === lastReadKey) return;
   lastReadKey = key;
-  setTimeout(speakAloud, 500);
+  setTimeout(() => {
+    const s = closestStation();
+    const m = s && markersByIcao[s.icaoId];
+    if (m) m.openPopup();   // show the METAR/TAF popup for the station being read
+    speakAloud();
+  }, 500);
 }
 function updateRibbon(arr){
   const el = $("ribbon"); if (!el) return;
