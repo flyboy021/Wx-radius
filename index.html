@@ -1184,7 +1184,7 @@ function spokenMetar(s){
   const tm = (s.rawOb || "").match(/\b\d{2}(\d{4})Z\b/);
   const pw = s.wxString ? (decodeWx(s.wxString) || "") : "";
   const auto = /\bAUTO\b/.test(s.rawOb || "");
-  const parts = [spokenName(s.name), tm ? `${digitWords(tm[1])} zulu` : "", "METAR", auto ? "Automated" : "",
+  const parts = [spokenName(s.name), tm ? `${digitWords(tm[1])} zulu` : "", "Meetar", auto ? "Automated" : "",
     spokenWind(s), spokenVis(s), pw, spokenClouds(s), spokenTemp(s), spokenAltim(s)].filter(Boolean);
   let text = parts.join(". ");
   const rmk = spokenRemarks(s);
