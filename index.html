@@ -89,6 +89,16 @@
   .rb-near b{font-weight:800;margin-right:3px}
   .rb-ok{color:var(--vfr);font-weight:700}
   .rb-vnr{color:var(--lifr);font-weight:800}
+  #ribbon.rb-tappable{cursor:pointer}
+  .rb-brief{color:var(--txt);font-weight:600}
+  .rb-caret{margin-left:auto;color:var(--muted);font-style:normal;transition:transform .15s}
+  #ribbon.exp .rb-caret{transform:rotate(180deg)}
+  #briefPanel{display:none;background:var(--panel);border-bottom:1px solid var(--line)}
+  #briefPanel.open{display:block;padding:8px 12px;max-height:40vh;overflow-y:auto}
+  .bp-row{display:flex;gap:10px;align-items:baseline;padding:3px 0;font-size:13px}
+  .bp-lbl{color:var(--muted);font-weight:600;min-width:110px;flex:none}
+  .bp-txt{color:var(--txt);word-break:break-word}
+  .bp-pill{color:#fff;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;margin-right:6px}
   #routePanel{background:var(--panel);border-bottom:1px solid var(--line);padding:8px 12px;
     display:flex;flex-direction:column;gap:8px}
   .rp-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -367,6 +377,7 @@
   </div>
 
   <div id="ribbon"></div>
+  <div id="briefPanel"></div>
   <div id="map"></div>
 
   <div id="status"></div>
@@ -987,32 +998,109 @@ function roleBadge(s){
   return s.routeRole === "dep" ? `<span class="rrole dep">DEP</span>`
     : s.routeRole === "dest" ? `<span class="rrole dest">DEST</span>` : "";
 }
-function updateRouteRibbon(arr){
-  const el = $("ribbon"); if (!el) return;
-  const order = {LIFR:4, IFR:3, MVFR:2, VFR:1};
-  let worst = null;
-  for (const s of arr) if (!isStale(s) && (!worst || (order[s.fltCat]||0) > (order[worst]||0))) worst = s.fltCat;
-  let html = (worst === "IFR" || worst === "LIFR") ? `<span class="rb-vnr">VFR flight not recommended</span>` : "";
-  const bad = arr.find(s => !isStale(s) && (s.fltCat === "IFR" || s.fltCat === "LIFR"));
-  if (bad){
-    const where = bad.along < 0 ? "before dep" : `${fmtDist(bad.along)} in`;
-    html += `<span class="rb-near"><b style="color:${catColor(bad.fltCat)}">${bad.fltCat}:</b>${bad.icaoId} ${where}</span>`;
+// ---- area / route brief (computed, shown in the ribbon; tap to expand details) ----
+const AB_RANK = {VFR:1, MVFR:2, IFR:3, LIFR:4};
+const AB_SEC = ["N","NE","E","SE","S","SW","W","NW"];
+const AB_SECN = {N:"north",NE:"northeast",E:"east",SE:"southeast",S:"south",SW:"southwest",W:"west",NW:"northwest"};
+const AB_LABEL = c => c === "LIFR" ? "low IFR" : c;
+function abVisNum(v){
+  if (v == null) return null;
+  let t = 0, any = false;
+  for (const p of String(v).replace("+","").split(/\s+/)){
+    if (p.includes("/")){ const [a,b] = p.split("/").map(Number); if (b){ t += a/b; any = true; } }
+    else { const n = parseFloat(p); if (!isNaN(n)){ t += n; any = true; } }
   }
-  el.innerHTML = html || `<span class="rb-near rb-ok">No IFR on route</span>`;
-  el.style.display = "flex";
+  return any ? t : null;
+}
+let lastBriefDetails = [];
+// Radius view: overall condition + which 8-point sectors are worse.
+function areaBrief(arr){
+  const stns = (arr||[]).filter(s => s.fltCat && !isStale(s));
+  if (!stns.length || !center) return {summary:"No current weather in view.", details:[]};
+  const counts = {VFR:0,MVFR:0,IFR:0,LIFR:0}, sec = {};
+  let worst = "VFR", lowCeil = null, lowVis = null;
+  for (const s of stns){
+    if (counts[s.fltCat] != null) counts[s.fltCat]++;
+    if (AB_RANK[s.fltCat] > AB_RANK[worst]) worst = s.fltCat;
+    const k = AB_SEC[Math.round(bearingDeg(center.lat, center.lon, s.lat, s.lon) / 45) % 8];
+    if (!sec[k] || AB_RANK[s.fltCat] > AB_RANK[sec[k].cat]) sec[k] = {cat:s.fltCat, s};
+    const c = ceilFt(s); if (c != null && (!lowCeil || c < lowCeil.v)) lowCeil = {v:c, s};
+    const v = abVisNum(s.visib); if (v != null && (!lowVis || v < lowVis.v)) lowVis = {v, s};
+  }
+  const prevailing = ["VFR","MVFR","IFR","LIFR"].reduce((a,b) => counts[b] > counts[a] ? b : a, "VFR");
+  const worseSecs = Object.entries(sec).filter(([k,o]) => AB_RANK[o.cat] > AB_RANK[prevailing]);
+  let summary;
+  if (worst === "VFR") summary = "VFR across the area.";
+  else if (!worseSecs.length) summary = `${AB_LABEL(prevailing)} across the area.`;
+  else {
+    const byCat = {};
+    for (const [k,o] of worseSecs) (byCat[o.cat] = byCat[o.cat] || []).push(k);
+    const parts = [];
+    for (const cat of ["LIFR","IFR","MVFR"]) if (byCat[cat]) parts.push(`${AB_LABEL(cat)} to the ${byCat[cat].map(k => AB_SECN[k]).join(" & ")}`);
+    summary = `Mostly ${AB_LABEL(prevailing)} — ${parts.join(", ")}.`;
+  }
+  const details = [];
+  for (const cat of ["LIFR","IFR","MVFR"])
+    for (const [k,o] of Object.entries(sec)){
+      if (o.cat !== cat || AB_RANK[cat] <= AB_RANK[prevailing]) continue;
+      const c = ceilFt(o.s), bits = [];
+      if (c != null) bits.push(`${c.toLocaleString()} ft`);
+      if (o.s.visib != null) bits.push(`${o.s.visib} SM`);
+      details.push({label:AB_SECN[k][0].toUpperCase()+AB_SECN[k].slice(1), cat, text:`${o.s.icaoId}${bits.length?" — "+bits.join(", "):""}`});
+    }
+  if (lowCeil) details.push({label:"Lowest ceiling", cat:null, text:`${lowCeil.s.icaoId} ${lowCeil.v.toLocaleString()} ft`});
+  if (lowVis) details.push({label:"Lowest visibility", cat:null, text:`${lowVis.s.icaoId} ${lowVis.s.visib} SM`});
+  let near = null, best = Infinity;
+  for (const s of stns) if (s.fltCat === "IFR" || s.fltCat === "LIFR"){ const d = distanceNm(center.lat, center.lon, s.lat, s.lon); if (d < best){ best = d; near = s; } }
+  if (near) details.push({label:`Nearest ${near.fltCat}`, cat:near.fltCat, text:`${near.icaoId} ${fmtDist(best)} ${compass(bearingDeg(center.lat, center.lon, near.lat, near.lon))}`});
+  return {summary, details};
+}
+// Route view: conditions along the flight (first half / rest) + reduced fields in order.
+function routeBrief(arr){
+  const stns = (arr||[]).filter(s => s.fltCat && !isStale(s) && s.along != null);
+  const total = routeLegs().total;
+  if (!stns.length || !total) return {summary:"No current weather along the route.", details:[]};
+  const half = total / 2;
+  let wFirst = "VFR", wSecond = "VFR";
+  for (const s of stns){
+    if (s.along < half){ if (AB_RANK[s.fltCat] > AB_RANK[wFirst]) wFirst = s.fltCat; }
+    else if (AB_RANK[s.fltCat] > AB_RANK[wSecond]) wSecond = s.fltCat;
+  }
+  const summary = (wFirst === wSecond)
+    ? `${wFirst === "VFR" ? "VFR" : AB_LABEL(wFirst)} along the route.`
+    : `${AB_LABEL(wFirst)} the first half, ${AB_LABEL(wSecond)} the rest.`;
+  const details = [];
+  for (const s of stns.filter(x => x.fltCat !== "VFR").sort((a,b) => a.along - b.along)){
+    const c = ceilFt(s), bits = [];
+    if (c != null) bits.push(`${c.toLocaleString()} ft`);
+    if (s.visib != null) bits.push(`${s.visib} SM`);
+    details.push({label:s.along < 0 ? "before dep" : `${fmtDist(s.along)} in`, cat:s.fltCat, text:`${s.icaoId}${bits.length?" — "+bits.join(", "):""}`});
+  }
+  if (!details.length) details.push({label:"", cat:"VFR", text:"VFR the whole way."});
+  return {summary, details};
 }
 function updateRibbon(arr){
   const el = $("ribbon"); if (!el) return;
-  if (!arr || !arr.length){ el.style.display = "none"; return; }
-  if (scope === "route"){ updateRouteRibbon(arr); return; }
-  const near = arr.find(s => !isStale(s) && (s.fltCat === "IFR" || s.fltCat === "LIFR"));   // fresh, sorted by distance
-  if (near && center){
-    const brg = compass(bearingDeg(center.lat, center.lon, near.lat, near.lon));
-    el.innerHTML = `<span class="rb-near"><b style="color:${catColor(near.fltCat)}">Nearest ${near.fltCat}:</b>${near.icaoId} ${fmtDist(near.dist)} ${brg}</span>`;
-  } else {
-    el.innerHTML = `<span class="rb-near rb-ok">No IFR in view</span>`;
-  }
+  const p = $("briefPanel");
+  const collapse = () => { if (p){ p.classList.remove("open"); p.innerHTML = ""; } el.classList.remove("exp"); };
+  if (!arr || !arr.length){ el.style.display = "none"; collapse(); return; }
+  const brief = (scope === "route") ? routeBrief(arr) : areaBrief(arr);
+  lastBriefDetails = brief.details;
+  el.innerHTML = `<span class="rb-brief">${brief.summary}</span>` + (brief.details.length ? `<i class="rb-caret">▾</i>` : "");
+  el.classList.toggle("rb-tappable", brief.details.length > 0);
   el.style.display = "flex";
+  collapse();   // close details on data refresh
+}
+function toggleBriefPanel(){
+  const p = $("briefPanel"), el = $("ribbon"); if (!p) return;
+  if (p.classList.contains("open")){ p.classList.remove("open"); p.innerHTML = ""; el.classList.remove("exp"); return; }
+  if (!lastBriefDetails.length) return;
+  p.innerHTML = lastBriefDetails.map(d => {
+    const pill = d.cat ? `<span class="bp-pill" style="background:${catColor(d.cat)}">${d.cat}</span>` : "";
+    const lab = d.label ? `<span class="bp-lbl">${d.label}</span>` : "";
+    return `<div class="bp-row">${lab}<span class="bp-txt">${pill}${d.text}</span></div>`;
+  }).join("");
+  p.classList.add("open"); el.classList.add("exp");
 }
 function youIcon(){
   return L.divIcon({className:"", html:`<div class="you"></div>`, iconSize:[16,16], iconAnchor:[8,8]});
@@ -2178,6 +2266,7 @@ $("rpChips").addEventListener("click", e => {
   if (scope === "route"){ if (route.length >= 2) loadRoute(); else drawRoute(); }
 });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
+$("ribbon").addEventListener("click", toggleBriefPanel);
 
 // ---- AI weather brief ------------------------------------------------------
 const AI_API = (PROXY_BASE || "") + "/api/summarize";
