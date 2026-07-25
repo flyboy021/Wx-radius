@@ -98,6 +98,16 @@
   .rb-speak svg{width:18px;height:18px}
   .rb-caret{color:var(--muted);font-style:normal;transition:transform .15s}
   #ribbon.exp .rb-caret{transform:rotate(180deg)}
+  .tip-pop{position:fixed;top:calc(max(env(safe-area-inset-top),12px) + 46px);right:10px;
+    z-index:4000;max-width:270px}
+  .tip-arrow{position:absolute;top:-6px;right:16px;width:13px;height:13px;background:#2b6fff;
+    transform:rotate(45deg);border-radius:2px}
+  .tip-body{position:relative;background:#2b6fff;color:#fff;border-radius:12px;padding:12px 14px;
+    box-shadow:0 10px 28px #0008;font-size:13px;line-height:1.5}
+  .tip-body b{display:block;font-size:14px;font-weight:800;margin-bottom:4px}
+  .tip-body em{font-style:normal;font-weight:800}
+  .tip-ok{margin-top:10px;background:#fff;color:#12437e;border:0;border-radius:8px;padding:7px 16px;
+    font-weight:800;font-size:13px;cursor:pointer}
   #briefPanel{display:none;background:var(--panel);border-bottom:1px solid var(--line)}
   #briefPanel.open{display:block;padding:8px 12px;max-height:min(38vh,320px);overflow-y:auto}
   .bp-row{display:flex;gap:10px;align-items:baseline;padding:3px 0;font-size:13px}
@@ -387,6 +397,15 @@
 
   <div id="ribbon"></div>
   <div id="briefPanel"></div>
+
+  <div id="tipAutospeak" class="tip-pop" style="display:none">
+    <div class="tip-arrow"></div>
+    <div class="tip-body">
+      <b>New — Read weather aloud</b>
+      <div>Hear the area brief and the nearest METAR/TAF spoken. Turn on <em>Read weather aloud on load</em> in Settings (the gear above), or tap the speaker on the summary bar anytime.</div>
+      <button type="button" id="tipAutospeakOk" class="tip-ok">Got it</button>
+    </div>
+  </div>
   <div id="map"></div>
 
   <div id="status"></div>
@@ -2407,6 +2426,16 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
+// One-time "new feature" callout pointing at Settings — shows once, then never again.
+const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
+function hideAutospeakTip(){ const t = $("tipAutospeak"); if (t) t.style.display = "none"; }
+function maybeShowAutospeakTip(){
+  if (localStorage.getItem(TIP_AUTOSPEAK_KEY)) return;
+  localStorage.setItem(TIP_AUTOSPEAK_KEY, "1");
+  const t = $("tipAutospeak"); if (t) t.style.display = "block";
+}
+$("tipAutospeakOk").addEventListener("click", hideAutospeakTip);
+setTimeout(maybeShowAutospeakTip, 1500);
 updateGpsPrefStatus();
 $("gpsPrefReset").addEventListener("click", () => {
   localStorage.removeItem(GPS_PREF_KEY);
@@ -2419,6 +2448,7 @@ $("gpsPrefReset").addEventListener("click", () => {
 });
 $("cogBtn").addEventListener("click", e => {
   e.stopPropagation();
+  hideAutospeakTip();
   const p = $("settingsPanel");
   p.style.display = p.style.display === "none" ? "block" : "none";
 });
