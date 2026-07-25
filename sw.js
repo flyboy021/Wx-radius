@@ -1,6 +1,6 @@
 // Minimal service worker: makes the app installable and loads the shell offline.
 // Weather API calls always go to the network (never cache stale weather).
-const CACHE = "wx-radius-v130";
+const CACHE = "wx-radius-v131";
 const SHELL = [
   "./",
   "./index.html",

@@ -108,6 +108,9 @@
   .tip-body em{font-style:normal;font-weight:800}
   .tip-ok{margin-top:10px;background:#fff;color:#12437e;border:0;border-radius:8px;padding:7px 16px;
     font-weight:800;font-size:13px;cursor:pointer}
+  @keyframes tipPulse{0%{box-shadow:0 0 0 0 rgba(43,111,255,.55)}
+    70%{box-shadow:0 0 0 9px rgba(43,111,255,0)}100%{box-shadow:0 0 0 0 rgba(43,111,255,0)}}
+  .tip-hint{animation:tipPulse 1.3s ease-out infinite;border-radius:50%}
   #briefPanel{display:none;background:var(--panel);border-bottom:1px solid var(--line)}
   #briefPanel.open{display:block;padding:8px 12px;max-height:min(38vh,320px);overflow-y:auto}
   .bp-row{display:flex;gap:10px;align-items:baseline;padding:3px 0;font-size:13px}
@@ -1296,6 +1299,7 @@ function updateRibbon(arr){
   if (window.speechSynthesis && speechSynthesis.speaking) updateSpeakBtn(true);
   el.style.display = "flex";
   collapse();   // close details on data refresh
+  applyTipHints();   // re-pulse the speaker if the first-run tip is still showing
 }
 function toggleBriefPanel(){
   const p = $("briefPanel"), el = $("ribbon"); if (!p) return;
@@ -2430,11 +2434,18 @@ setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
-function hideAutospeakTip(){ const t = $("tipAutospeak"); if (t) t.style.display = "none"; }
+function tipVisible(){ const t = $("tipAutospeak"); return t && t.style.display !== "none"; }
+function applyTipHints(){   // pulse the gear + speaker so the tip points at both
+  if (!tipVisible()) return;
+  ["cogBtn","speakBtn"].forEach(id => { const b = $(id); if (b) b.classList.add("tip-hint"); });
+}
+function clearTipHints(){ ["cogBtn","speakBtn"].forEach(id => { const b = $(id); if (b) b.classList.remove("tip-hint"); }); }
+function hideAutospeakTip(){ clearTipHints(); const t = $("tipAutospeak"); if (t) t.style.display = "none"; }
 function maybeShowAutospeakTip(){
   if (localStorage.getItem(TIP_AUTOSPEAK_KEY)) return;
   localStorage.setItem(TIP_AUTOSPEAK_KEY, "1");
   const t = $("tipAutospeak"); if (t) t.style.display = "block";
+  applyTipHints();
 }
 $("tipAutospeakOk").addEventListener("click", hideAutospeakTip);
 setTimeout(maybeShowAutospeakTip, 1500);
