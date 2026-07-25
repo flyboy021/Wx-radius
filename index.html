@@ -2175,6 +2175,16 @@ function stationLine(s){
 
 function waypointLabel(p){ return p.name ? `${p.name} (${p.id})` : p.id; }
 
+// Strip stray markdown the model might slip in, so it's never displayed or spoken literally.
+function cleanAiText(text){
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")   // **bold**
+    .replace(/[*_`]/g, "")             // stray *, _, `
+    .replace(/^\s*#{1,6}\s*/gm, "")    // # headers
+    .replace(/^\s*[-•]\s+/gm, "")      // bullet markers
+    .trim();
+}
+
 function buildBriefPrompt(kind){
   const arr = (lastStations || []).slice().sort((a,b) => (a.dist||0) - (b.dist||0)).slice(0, 20);
   const lines = arr.map(stationLine).join("\n\n");
@@ -2258,9 +2268,10 @@ async function runAiSummary(kind){
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || "AI service error");
+    const clean = data.summary ? cleanAiText(data.summary) : "";
     body.className = "";
-    body.textContent = data.summary || "No summary returned.";
-    $("aiReadBtn").style.display = data.summary ? "" : "none";
+    body.textContent = clean || "No summary returned.";
+    $("aiReadBtn").style.display = clean ? "" : "none";
   }catch(e){
     body.className = "err";
     body.textContent = e.message || "Could not generate AI briefing.";
