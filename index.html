@@ -97,8 +97,20 @@
     border-radius:7px;padding:6px 11px;font-size:13px;font-weight:700;cursor:pointer}
   #routePanel button.ghost{background:transparent;color:var(--muted);font-weight:600}
   #routePanel button.on{background:var(--accent,#2b6fff);color:#fff;border-color:transparent}
-  .rp-note{color:var(--muted);font-size:12px}
+  .rp-note{color:var(--muted);font-size:12px;flex:1}
   .rp-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:4px;flex:1}
+  #aiPanel{background:var(--panel2);border-bottom:1px solid var(--line);padding:10px 12px;
+    max-height:38vh;overflow-y:auto}
+  .ai-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+  #aiTitle{font-weight:800;font-size:13px;color:var(--txt)}
+  .ai-actions{display:flex;align-items:center;gap:6px}
+  .ai-actions button{background:#1b2330;color:var(--txt);border:1px solid var(--line);
+    border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
+  .ai-actions button.ghost{background:transparent;color:var(--muted);font-weight:600}
+  .ai-actions button.on{background:var(--accent,#2b6fff);color:#fff;border-color:transparent}
+  #aiBody{color:var(--txt);font-size:14px;line-height:1.5;white-space:pre-wrap}
+  #aiBody.err{color:#ff8a80}
+  #aiBody.loading{color:var(--muted);font-style:italic}
   .chip-wp{display:inline-flex;align-items:center;gap:5px;background:#1b2330;border:1px solid var(--line);
     border-radius:6px;padding:3px 4px 3px 8px;font-size:13px;font-weight:800}
   .chip-x{background:transparent;border:none;color:var(--muted);font-size:15px;line-height:1;
@@ -317,6 +329,7 @@
       </div>
       <button id="routeBtn" class="toggle" title="Plan weather along a route">Route</button>
       <button id="listBtn" class="toggle" title="Switch between map and list">List</button>
+      <button id="aiBriefBtn" class="toggle" title="AI-generated plain-English weather summary">✦ AI Brief</button>
       <div class="row-break"></div>
       <button id="radarBtn" class="toggle" title="Toggle weather radar">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6">
@@ -338,7 +351,19 @@
     </div>
     <div class="rp-row">
       <span class="rp-note">Use the radius buttons above for corridor width</span>
+      <button id="aiRouteBriefBtn" class="ghost" title="AI-generated plain-English route briefing">✦ AI Route Brief</button>
     </div>
+  </div>
+
+  <div id="aiPanel" style="display:none">
+    <div class="ai-head">
+      <span id="aiTitle">AI Brief</span>
+      <div class="ai-actions">
+        <button id="aiReadBtn" class="ghost" title="Read this brief aloud" style="display:none">🔊 Read aloud</button>
+        <button id="aiCloseBtn" class="ghost" title="Close">✕</button>
+      </div>
+    </div>
+    <div id="aiBody">Loading…</div>
   </div>
 
   <div id="ribbon"></div>
@@ -1977,6 +2002,7 @@ function exitRouteMode(){
   clearRouteLayer();
   $("routePanel").style.display = "none";
   $("routeBtn").classList.remove("on");
+  $("aiBriefBtn").style.display = "";
 }
 $("go").addEventListener("click", async () => {
   cancelIntro();
@@ -1987,6 +2013,7 @@ $("go").addEventListener("click", async () => {
     await addWaypointsFromText(raw);
     $("routePanel").style.display = "block";
     $("routeBtn").classList.add("on");
+    $("aiBriefBtn").style.display = "none";
     syncRadiusSeg();
     if (route.length >= 2) loadRoute(); else setStatus("");
     return;
@@ -2121,6 +2148,7 @@ $("routeBtn").addEventListener("click", () => {
   const p = $("routePanel"), open = p.style.display === "none";
   p.style.display = open ? "block" : "none";
   $("routeBtn").classList.toggle("on", open);
+  $("aiBriefBtn").style.display = open ? "none" : "";
   syncRadiusSeg();
   if (open) renderChips();
 });
@@ -2131,6 +2159,87 @@ $("rpChips").addEventListener("click", e => {
   if (scope === "route"){ if (route.length >= 2) loadRoute(); else drawRoute(); }
 });
 $("listBtn").addEventListener("click", () => setViewMode(viewMode === "map" ? "list" : "map"));
+
+// ---- AI weather brief ------------------------------------------------------
+const AI_API = (PROXY_BASE || "") + "/api/summarize";
+let aiSpeaking = false;
+
+function stationLine(s){
+  const dist = s.dist != null ? `${fmtDist(s.dist)} away` : "";
+  const role = s.routeRole === "dep" ? " [departure]" : s.routeRole === "dest" ? " [destination]" : "";
+  let line = `${s.icaoId}${role} (${dist}): ${s.rawOb || "no current METAR"}`;
+  if (s.taf && s.taf.rawTAF) line += `\nTAF: ${s.taf.rawTAF}`;
+  return line;
+}
+
+function buildBriefPrompt(kind){
+  const arr = (lastStations || []).slice().sort((a,b) => (a.dist||0) - (b.dist||0)).slice(0, 20);
+  const lines = arr.map(stationLine).join("\n\n");
+  if (kind === "route"){
+    const ids = route.map(p => p.id).join(" → ");
+    return `Route: ${ids}. Give the pilot a spoken-style briefing of the weather along this route, ` +
+      `departure to destination, using the stations below (nearest first):\n\n${lines}`;
+  }
+  const where = scope === "region" ? regionName(center) : (center ? `${center.name}, ${radiusNm} nm radius` : "the area");
+  return `Area: ${where}. Give the pilot a spoken-style briefing of the current weather in this area, ` +
+    `using the stations below (nearest first):\n\n${lines}`;
+}
+
+function stopAiSpeech(){
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  aiSpeaking = false;
+  const btn = $("aiReadBtn");
+  if (btn) { btn.textContent = "🔊 Read aloud"; btn.classList.remove("on"); }
+}
+
+function closeAiPanel(){
+  stopAiSpeech();
+  $("aiPanel").style.display = "none";
+}
+
+async function runAiSummary(kind){
+  if (kind === "route" && route.length < 2){
+    setStatus("Add at least two waypoints to plan a route.", true);
+    return;
+  }
+  stopAiSpeech();
+  $("aiTitle").textContent = kind === "route" ? "AI Route Brief" : "AI Brief";
+  $("aiReadBtn").style.display = "none";
+  const body = $("aiBody");
+  body.className = "loading";
+  body.textContent = "Generating briefing…";
+  $("aiPanel").style.display = "block";
+  try{
+    const res = await fetch(AI_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: buildBriefPrompt(kind) }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || "AI service error");
+    body.className = "";
+    body.textContent = data.summary || "No summary returned.";
+    $("aiReadBtn").style.display = data.summary ? "" : "none";
+  }catch(e){
+    body.className = "err";
+    body.textContent = e.message || "Could not generate AI briefing.";
+  }
+}
+
+$("aiBriefBtn").addEventListener("click", () => runAiSummary("area"));
+$("aiRouteBriefBtn").addEventListener("click", () => runAiSummary("route"));
+$("aiCloseBtn").addEventListener("click", closeAiPanel);
+$("aiReadBtn").addEventListener("click", () => {
+  if (!window.speechSynthesis) return;
+  if (aiSpeaking){ stopAiSpeech(); return; }
+  const utter = new SpeechSynthesisUtterance($("aiBody").textContent);
+  utter.onend = stopAiSpeech;
+  utter.onerror = stopAiSpeech;
+  aiSpeaking = true;
+  $("aiReadBtn").textContent = "⏸ Stop";
+  $("aiReadBtn").classList.add("on");
+  window.speechSynthesis.speak(utter);
+});
 $("modeBtn").addEventListener("click", () => {
   metarMode = metarMode === "raw" ? "plain" : "raw";
   $("modeBtn").textContent = metarMode === "raw" ? "Raw" : "Plain";

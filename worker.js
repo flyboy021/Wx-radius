@@ -14,9 +14,65 @@ export default {
       return new Response(null, {
         headers: {
           "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
         },
       });
+    }
+
+    // AI weather briefing summary. The Anthropic API key is kept server-side as
+    // the ANTHROPIC_API_KEY Worker secret, never in the app or on GitHub.
+    if (url.pathname === "/api/summarize" && request.method === "POST") {
+      const key = env && env.ANTHROPIC_API_KEY;
+      if (!key) {
+        return new Response(JSON.stringify({ error: "AI summary is not configured on the server." }), {
+          status: 500, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+      let body;
+      try { body = await request.json(); } catch (e) { body = {}; }
+      const prompt = String((body && body.prompt) || "").slice(0, 12000);
+      if (!prompt) {
+        return new Response(JSON.stringify({ error: "Missing prompt" }), {
+          status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+      try {
+        const up = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": key,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5",
+            max_tokens: 500,
+            system: "You are a concise VFR/IFR aviation weather briefer speaking to a general aviation pilot. " +
+              "Summarize the given METAR/TAF data in plain spoken English, organized for reading aloud. " +
+              "Lead with the overall picture (VFR/MVFR/IFR/LIFR), then call out notable hazards (low ceilings, " +
+              "poor visibility, strong/gusty wind, thunderstorms, icing, IFR trends). Keep it under 150 words, " +
+              "use short sentences, and avoid raw METAR/TAF jargon codes. End with a one-line reminder that this " +
+              "is not an official weather briefing.",
+            messages: [{ role: "user", content: prompt }],
+          }),
+        });
+        const data = await up.json();
+        if (!up.ok) {
+          const msg = (data && data.error && data.error.message) || "AI service error";
+          return new Response(JSON.stringify({ error: msg }), {
+            status: up.status, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        const text = (data.content || []).map(c => c.text || "").join("").trim();
+        return new Response(JSON.stringify({ summary: text }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: "AI service unreachable" }), {
+          status: 502, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
     }
 
     // Synoptic Data (MesoWest) — mountain-pass / RWIS / mesonet stations.
