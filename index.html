@@ -1227,6 +1227,15 @@ function updateSpeakBtn(on){ const b = $("speakBtn"); if (b) b.classList.toggle(
 // Native Capacitor TTS when available (Android/iOS webview has no Web Speech API), else browser speech.
 const capTTS = () => (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TextToSpeech) || null;
 let speaking = false, lastReadKey = null;
+// Browsers block speechSynthesis until the user interacts once. Unlock it on the
+// first touch/tap/key so auto-read works for the rest of the session.
+let speechPrimed = false;
+function primeSpeech(){
+  if (speechPrimed || !window.speechSynthesis || capTTS()) return;
+  speechPrimed = true;
+  try{ const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); speechSynthesis.cancel(); }catch(e){}
+}
+["pointerdown","touchend","keydown"].forEach(ev => window.addEventListener(ev, primeSpeech, {passive:true}));
 function stopSpeak(){
   speaking = false;
   const t = capTTS(); if (t) t.stop().catch(() => {});
