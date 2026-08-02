@@ -1,0 +1,5 @@
+.DS_Store
+.claude/
+*.jks
+*.keystore
+Keep for password/
