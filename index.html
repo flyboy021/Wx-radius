@@ -1119,6 +1119,10 @@ function digitWords(str){
   return String(str).split("").map(c => w[c] || c).join(" ");
 }
 function spokenAviationNumber(n){ return Number(n) === 9 ? "niner" : String(n); }
+function spokenWindSpeed(n){
+  const v = Math.max(0, Math.round(Number(n)));
+  return digitWords(String(v).padStart(2,"0"));
+}
 function spokenName(name){
   if (!name) return "the airport";
   let n = name.split(",")[0].trim();
@@ -1135,8 +1139,9 @@ function spokenWind(s){
   if (s.wspd == null && s.wdir == null) return "";
   if (s.wspd != null && Number(s.wspd) === 0) return "winds calm";   // 00000KT
   const dir = (s.wdir === "VRB" || s.wdir == null) ? "variable" : digitWords(String(s.wdir).padStart(3,"0"));
-  let t = `wind ${dir} at ${spokenAviationNumber(s.wspd)} knots`;
-  if (s.wgst) t += `, gusting ${spokenAviationNumber(s.wgst)} knots`;
+  let t = `winds ${dir} at ${spokenWindSpeed(s.wspd)}`;
+  if (s.wgst) t += `, gust ${spokenWindSpeed(s.wgst)}`;
+  t += " knots";
   return t;
 }
 function spokenVisStr(v){
@@ -1216,17 +1221,23 @@ function spokenMetarSegments(s){
   // "MEE-tar", rather than reading it as an unfamiliar word or initials.
   const kind = speci ? "special report" : "MEE-tar";
   const report = tm
-    ? `${kind}, ${digitWords(tm[1])} zulu${auto ? ", automated" : ""}`
-    : `${kind}${auto ? ", automated" : ""}`;
-  const parts = [spokenName(s.name), report,
-    spokenWind(s), spokenVis(s), pw, spokenClouds(s), spokenTemp(s), spokenAltim(s)].filter(Boolean);
-  let text = parts.join(". ");
+    ? `${kind}, ${digitWords(tm[1])} zulu${auto ? ", automated report" : ""}`
+    : `${kind}${auto ? ", automated report" : ""}`;
+  const wind = spokenWind(s);
+  const remainder = [spokenVis(s), pw, spokenClouds(s), spokenTemp(s), spokenAltim(s)].filter(Boolean);
   const rmk = spokenRemarks(s);
-  if (rmk) text += `. Remarks, ${rmk}`;
+  if (rmk) remainder.push(`Remarks, ${rmk}`);
+  // Android's native voice can merge adjacent METAR digit groups even when
+  // punctuation separates them. Use separate speech requests for the report
+  // time and wind so 0513Z followed by 02013G22KT cannot become gibberish.
+  const segments = [`${spokenName(s.name)}. ${report}.`];
+  if (wind) segments.push(`${wind}.`);
+  if (remainder.length) segments.push(remainder.join(". ") + ".");
   // Keep density altitude in its own speech segment: it follows a short pause
   // after the altimeter and any operationally important remarks.
   const density = spokenDensityAlt(s);
-  return [text + ".", ...(density ? [density + "."] : [])];
+  if (density) segments.push(density + ".");
+  return segments;
 }
 function spokenTime(epoch){ const d = new Date(epoch * 1000); return digitWords(String(d.getUTCHours()).padStart(2,"0") + String(d.getUTCMinutes()).padStart(2,"0")); }
 function spokenTaf(t){
@@ -1243,7 +1254,7 @@ function spokenTaf(t){
     const bits = [];
     if (f.wdir != null || f.wspd != null){
       const dir = (f.wdir === "VRB" || f.wdir == null) ? "variable" : digitWords(String(f.wdir).padStart(3,"0"));
-      let w = `wind ${dir} at ${spokenAviationNumber(f.wspd)} knots`; if (f.wgst) w += ` gusting ${spokenAviationNumber(f.wgst)} knots`; bits.push(w);
+      let w = `winds ${dir} at ${spokenWindSpeed(f.wspd)}`; if (f.wgst) w += `, gust ${spokenWindSpeed(f.wgst)}`; bits.push(w + " knots");
     }
     if (f.visib != null) bits.push(spokenVisPhrase(f.visib));
     if (f.wxString){ const pw = decodeWx(f.wxString); if (pw) bits.push(pw); }
@@ -2494,7 +2505,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "134";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "135";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
