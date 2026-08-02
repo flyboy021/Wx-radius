@@ -1233,10 +1233,13 @@ function spokenTaf(t){
   if (!t || !t.fcsts || !t.fcsts.length) return "";
   const out = ["Terminal Area Forecast"];
   t.fcsts.forEach((f, i) => {
-    let pre = `from ${spokenTime(f.timeFrom)} zulu`;
-    if (i > 0 && f.fcstChange === "BECMG") pre = `becoming ${spokenTime(f.timeFrom)} zulu`;
-    else if (f.fcstChange === "TEMPO") pre = `temporary ${spokenTime(f.timeFrom)} zulu`;
-    else if (f.probability) pre = `${f.probability} percent chance ${spokenTime(f.timeFrom)} zulu`;
+    const timeRange = f.timeTo != null
+      ? `from ${spokenTime(f.timeFrom)} zulu to ${spokenTime(f.timeTo)} zulu`
+      : `from ${spokenTime(f.timeFrom)} zulu`;
+    let pre = timeRange;
+    if (i > 0 && f.fcstChange === "BECMG") pre = `becoming ${timeRange}`;
+    else if (f.fcstChange === "TEMPO") pre = `temporary ${timeRange}`;
+    else if (f.probability) pre = `${f.probability} percent chance ${timeRange}`;
     const bits = [];
     if (f.wdir != null || f.wspd != null){
       const dir = (f.wdir === "VRB" || f.wdir == null) ? "variable" : digitWords(String(f.wdir).padStart(3,"0"));
