@@ -1115,9 +1115,10 @@ function routeBrief(arr){
 // ---- read aloud (free device text-to-speech) -----------------------------
 const SPEAKER_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.8 5.5a9 9 0 0 1 0 13"/></svg>`;
 function digitWords(str){
-  const w = {"0":"zero","1":"one","2":"two","3":"three","4":"four","5":"five","6":"six","7":"seven","8":"eight","9":"nine"};
+  const w = {"0":"zero","1":"one","2":"two","3":"three","4":"four","5":"five","6":"six","7":"seven","8":"eight","9":"niner"};
   return String(str).split("").map(c => w[c] || c).join(" ");
 }
+function spokenAviationNumber(n){ return Number(n) === 9 ? "niner" : String(n); }
 function spokenName(name){
   if (!name) return "the airport";
   let n = name.split(",")[0].trim();
@@ -1134,8 +1135,8 @@ function spokenWind(s){
   if (s.wspd == null && s.wdir == null) return "";
   if (s.wspd != null && Number(s.wspd) === 0) return "winds calm";   // 00000KT
   const dir = (s.wdir === "VRB" || s.wdir == null) ? "variable" : digitWords(String(s.wdir).padStart(3,"0"));
-  let t = `wind ${dir} at ${s.wspd} knots`;
-  if (s.wgst) t += `, gusting ${s.wgst} knots`;
+  let t = `wind ${dir} at ${spokenAviationNumber(s.wspd)} knots`;
+  if (s.wgst) t += `, gusting ${spokenAviationNumber(s.wgst)} knots`;
   return t;
 }
 function spokenVisStr(v){
@@ -1143,6 +1144,7 @@ function spokenVisStr(v){
   s = s.replace("1/2","one half").replace("1/4","one quarter").replace("3/4","three quarters")
        .replace("1/8","one eighth").replace("3/8","three eighths").replace("5/8","five eighths").replace("1/16","one sixteenth");
   s = s.replace(/(\d)\s+(one|three|five)/, "$1 and $2");
+  s = s.replace(/\b9\b/g, "niner");
   return more ? s + " or more" : s;
 }
 function spokenVisPhrase(v){
@@ -1151,13 +1153,17 @@ function spokenVisPhrase(v){
   return `visibility ${spokenVisStr(v)} statute mile${(num != null && num <= 1) ? "" : "s"}`;
 }
 function spokenVis(s){ return spokenVisPhrase(s.visib); }
+function spokenCloudHeight(base){
+  // Aviation pronunciation: BKN090 / OVC090 is "niner thousand."
+  return Number(base) === 9000 ? "niner thousand" : Number(base).toLocaleString();
+}
 function spokenCloudLayer(c){
   if (c.cover === "CLR") return "sky clear below one two thousand";
   if (["SKC","NSC","NCD"].includes(c.cover)) return "sky clear";
-  if (c.cover === "VV") return c.base != null ? `indefinite ceiling at ${c.base} feet above ground level` : "indefinite ceiling";
+  if (c.cover === "VV") return c.base != null ? `indefinite ceiling at ${spokenCloudHeight(c.base)} feet above ground level` : "indefinite ceiling";
   const lab = {FEW:"few clouds at", SCT:"scattered at", BKN:"broken at", OVC:"overcast at"}[c.cover];
   if (!lab) return "";
-  return c.base != null ? `${lab} ${c.base.toLocaleString()}` : lab;
+  return c.base != null ? `${lab} ${spokenCloudHeight(c.base)}` : lab;
 }
 function spokenClouds(s){
   if (!s.clouds || !s.clouds.length){
@@ -1165,11 +1171,21 @@ function spokenClouds(s){
     if (s.cover === "SKC") return "sky clear";
     return "";
   }
-  return s.clouds.map(spokenCloudLayer).filter(Boolean).join(", ");
+  let ceilingSaid = false;
+  return s.clouds.map(c => {
+    // In METAR usage, the first BKN or OVC layer is the ceiling. Say that
+    // explicitly once; any higher layers remain ordinary cloud descriptions.
+    if (!ceilingSaid && (c.cover === "BKN" || c.cover === "OVC")){
+      ceilingSaid = true;
+      const cover = c.cover === "BKN" ? "broken" : "overcast";
+      return c.base != null ? `ceiling, ${cover} at ${spokenCloudHeight(c.base)}` : `ceiling, ${cover}`;
+    }
+    return spokenCloudLayer(c);
+  }).filter(Boolean).join(", ");
 }
 function spokenTemp(s){
   if (s.temp == null) return "";
-  const w = n => n < 0 ? `minus ${Math.abs(n)}` : `${n}`;
+  const w = n => n < 0 ? `minus ${spokenAviationNumber(Math.abs(n))}` : spokenAviationNumber(n);
   const d = s.dewp != null ? `, dewpoint ${w(Math.round(s.dewp))}` : "";
   return `temperature ${w(Math.round(s.temp))}${d}`;
 }
@@ -1179,22 +1195,38 @@ function spokenAltim(s){
   if (s.altim != null) return `altimeter ${(s.altim * 0.02953).toFixed(2)}`;
   return "";
 }
+function spokenDensityAlt(s){
+  const da = densityAlt(s);
+  return da != null ? `density altitude ${spokenCloudHeight(da)} feet` : "";
+}
 function spokenRemarks(s){
   const rmk = decodeRemarks(s.rawOb) || [];
   const sig = rmk.filter(r => /thunderstorm|lightning|rain|snow|hail|drizzle|funnel|tornado|waterspout|freezing|rising rapidly|falling rapidly|squall|virga|dust|sand|fog|mist|smoke|volcanic|wind shift|peak wind|gust|cumulonimbus|towering cumulus|altocumulus/i.test(r))
     .map(r => r.replace(/<[^>]+>/g, "").trim());
   return sig.join(", ");
 }
-function spokenMetar(s){
+function spokenMetarSegments(s){
   const tm = (s.rawOb || "").match(/\b\d{2}(\d{4})Z\b/);
   const pw = s.wxString ? (decodeWx(s.wxString) || "") : "";
   const auto = /\bAUTO\b/.test(s.rawOb || "");
-  const parts = [spokenName(s.name), tm ? `${digitWords(tm[1])} zulu` : "", "Mee tar", auto ? "Automated" : "",
+  const speci = s.metarType === "SPECI" || /\bSPECI\b/.test(s.rawOb || "");
+  // Keep the report time separate from the wind group so TTS does not blend
+  // the ending time digits into a following three-digit wind direction.
+  // Hyphenation gives Android's voice the conventional aviation pronunciation:
+  // "MEE-tar", rather than reading it as an unfamiliar word or initials.
+  const kind = speci ? "special report" : "MEE-tar";
+  const report = tm
+    ? `${kind}, ${digitWords(tm[1])} zulu${auto ? ", automated" : ""}`
+    : `${kind}${auto ? ", automated" : ""}`;
+  const parts = [spokenName(s.name), report,
     spokenWind(s), spokenVis(s), pw, spokenClouds(s), spokenTemp(s), spokenAltim(s)].filter(Boolean);
   let text = parts.join(". ");
   const rmk = spokenRemarks(s);
   if (rmk) text += `. Remarks, ${rmk}`;
-  return text + ".";
+  // Keep density altitude in its own speech segment: it follows a short pause
+  // after the altimeter and any operationally important remarks.
+  const density = spokenDensityAlt(s);
+  return [text + ".", ...(density ? [density + "."] : [])];
 }
 function spokenTime(epoch){ const d = new Date(epoch * 1000); return digitWords(String(d.getUTCHours()).padStart(2,"0") + String(d.getUTCMinutes()).padStart(2,"0")); }
 function spokenTaf(t){
@@ -1208,7 +1240,7 @@ function spokenTaf(t){
     const bits = [];
     if (f.wdir != null || f.wspd != null){
       const dir = (f.wdir === "VRB" || f.wdir == null) ? "variable" : digitWords(String(f.wdir).padStart(3,"0"));
-      let w = `wind ${dir} at ${f.wspd} knots`; if (f.wgst) w += ` gusting ${f.wgst}`; bits.push(w);
+      let w = `wind ${dir} at ${spokenAviationNumber(f.wspd)} knots`; if (f.wgst) w += ` gusting ${spokenAviationNumber(f.wgst)} knots`; bits.push(w);
     }
     if (f.visib != null) bits.push(spokenVisPhrase(f.visib));
     if (f.wxString){ const pw = decodeWx(f.wxString); if (pw) bits.push(pw); }
@@ -1275,8 +1307,10 @@ function speakAloud(){
   if (!s){ setStatus("No nearby weather to read."); return; }
   let brief = (scope === "route" ? routeBrief(arr) : areaBrief(arr)).summary
     .replace(/ — /g, " with ").replace(/ & /g, " and ");
+  // Expand this in speech so the voice says the pilot term, not letter-by-letter.
+  brief = brief.replace(/\bMVFR\b/g, "Marginal VFR");
   if (scope !== "route" && !/the area/i.test(brief)) brief = brief.replace(/\.\s*$/, "") + " throughout the area.";
-  const segs = [brief, spokenMetar(s)];
+  const segs = [brief, ...spokenMetarSegments(s)];
   if (s.taf) segs.push(spokenTaf(s.taf));
   speakSegments(segs);
 }
