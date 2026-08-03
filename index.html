@@ -468,6 +468,7 @@ let center = null;
 let lastStations = [];
 let openStationId = null;     // icao of the station whose popup is currently open
 let markersByIcao = {};
+let loadGeneration = 0;       // prevents an older search/location request from replacing the newest one
 let scope = "local";    // "local" (25/50/100nm) or "region"
 let metarMode = "raw";  // "raw" or "plain" — global for all stations
 let tempUnit = "C";     // "C" or "F" for decoded temp/dewpoint
@@ -2119,6 +2120,7 @@ function maybeWarnZone(lat, lon){
 async function load(c, opts){
   if (!c) return;
   opts = opts || {};
+  const generation = ++loadGeneration;
   center = c;
   maybeWarnZone(c.lat, c.lon);
   centerTz = tzOf(c.lat, c.lon);   // zone of the area being viewed
@@ -2143,6 +2145,9 @@ async function load(c, opts){
       const [stations] = await Promise.all([ fetchWx(c.lat, c.lon), loadAtisAll() ]);
       lastStations = stations;
     }
+    // A slower earlier search can finish after a newer one.  Ignore it so the
+    // selected airport's METAR is never replaced by stale search results.
+    if (generation !== loadGeneration) return;
     drawBase();
     if (region){
       map.fitBounds(boxToBounds(regionBox(c)), {padding:[20,20]});
@@ -2158,6 +2163,10 @@ async function load(c, opts){
     }
     renderStations();
     renderList();
+    // Search selects a specific airport, so reveal that report immediately
+    // instead of making the pilot locate and tap its marker.
+    const selected = opts.openStationId && markersByIcao[opts.openStationId];
+    if (selected) selected.openPopup();
     setTimeout(() => map.invalidateSize(), 80);   // ensure the map fills the full height
     if (lastStations[0]) updateFavicon(lastStations[0].fltCat);
     document.title = lastStations[0]
@@ -2167,7 +2176,7 @@ async function load(c, opts){
     setStatus(lastStations.length ? "" : "No reporting stations found.");
     maybeAutoRead(opts.animate ? 1800 : 500);   // longer wait after the intro fly-in so speech isn't cut off
   }catch(e){
-    setStatus(e.message || "Could not load weather", true);
+    if (generation === loadGeneration) setStatus(e.message || "Could not load weather", true);
   }
 }
 
@@ -2410,7 +2419,7 @@ $("go").addEventListener("click", async () => {
     if (route.length >= 2) loadRoute(); else setStatus("");
     return;
   }
-  try{ setStatus("Searching…"); exitRouteMode(); const hit = await geocode(raw); await load(hit); militaryStaleNotice(null, hit.name, hit.lat, hit.lon); }
+  try{ setStatus("Searching…"); exitRouteMode(); const hit = await geocode(raw); await load(hit, {openStationId:hit.id}); militaryStaleNotice(null, hit.name, hit.lat, hit.lon); }
   catch(e){ setStatus(e.message, true); }
 });
 $("skipBtn").addEventListener("click", skipIntro);
@@ -2449,7 +2458,7 @@ async function acPick(a){
   if (!a) return;
   acHide(); $("q").value = a.icaoId; $("q").blur();
   cancelIntro(); exitRouteMode(); setStatus("Searching…");
-  await load({lat:a.lat, lon:a.lon, name:a.name || a.icaoId});
+  await load({lat:a.lat, lon:a.lon, name:a.name || a.icaoId}, {openStationId:a.icaoId});
   militaryStaleNotice(a.icaoId, a.name, a.lat, a.lon);
 }
 // When a searched airport is a military field with no fresh weather, explain instead of showing nothing.
@@ -2505,7 +2514,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "135";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "136";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
