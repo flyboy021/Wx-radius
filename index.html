@@ -79,9 +79,9 @@
   .legend{display:inline-flex;align-items:center;gap:8px;vertical-align:middle;margin-right:8px}
   .legend .item{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--muted)}
   .dot{width:8px;height:8px;border-radius:50%}
-  #ribbon{display:none;align-items:center;gap:12px;justify-content:space-between;
+  #ribbon{display:none;align-items:flex-start;gap:12px;justify-content:space-between;
     background:var(--panel);border-bottom:1px solid var(--line);padding:6px 12px;
-    font-size:12px;overflow-x:auto;white-space:nowrap;flex:none}
+    font-size:12px;overflow:hidden;white-space:normal;flex:none}
   .rb-counts{display:flex;gap:11px;align-items:center}
   .rb-chip{display:flex;align-items:center;gap:4px;color:var(--txt);font-weight:700}
   .rb-dot{width:9px;height:9px;border-radius:50%;flex:none}
@@ -90,10 +90,10 @@
   .rb-ok{color:var(--vfr);font-weight:700}
   .rb-vnr{color:var(--lifr);font-weight:800}
   #ribbon.rb-tappable{cursor:pointer}
-  .rb-brief{color:var(--txt);font-weight:600}
-  .rb-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex:none}
+  .rb-brief{color:var(--txt);font-weight:600;flex:1;min-width:0;line-height:1.35;overflow-wrap:anywhere}
+  .rb-right{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none}
   .rb-speak{background:transparent;border:0;color:var(--muted);cursor:pointer;padding:0;
-    display:inline-flex;line-height:0}
+    display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;line-height:0}
   .rb-speak.on{color:#2b6fff}
   .rb-speak svg{width:18px;height:18px}
   .rb-caret{color:var(--muted);font-style:normal;transition:transform .15s}
@@ -2514,7 +2514,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "136";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "137";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
@@ -2672,6 +2672,7 @@ function pickAiVoice(){
 }
 
 let aiSpeechQueue = [];
+let aiNativeRun = 0;
 // iOS Safari has shipped WebKit builds that silently drop an utterance if nothing
 // else holds a reference to it (garbage-collected before it starts) — keep one here.
 let currentAiUtterance = null;
@@ -2708,10 +2709,25 @@ function speakAiQueue(){
   startAiKeepAlive();
 }
 
+// Capacitor's native text-to-speech plugin is available in the Android wrapper
+// even when the Web Speech API is not. Speak one sentence at a time, matching
+// the browser queue and allowing the existing Stop button to interrupt it.
+async function speakAiNativeQueue(run){
+  const t = capTTS();
+  while (t && aiSpeaking && run === aiNativeRun && aiSpeechQueue.length){
+    const text = aiSpeechQueue.shift();
+    try { await t.speak({text, lang:"en-US", rate:1.0}); }
+    catch(e) { break; }
+  }
+  if (run === aiNativeRun) stopAiSpeech();
+}
+
 function stopAiSpeech(){
+  aiNativeRun++;
   aiSpeechQueue = [];
   currentAiUtterance = null;
   stopAiKeepAlive();
+  const t = capTTS(); if (t) t.stop().catch(() => {});
   if (window.speechSynthesis) window.speechSynthesis.cancel();
   aiSpeaking = false;
   const btn = $("aiReadBtn");
@@ -2757,7 +2773,8 @@ $("aiBriefBtn").addEventListener("click", () => runAiSummary("area"));
 $("aiRouteBriefBtn").addEventListener("click", () => runAiSummary("route"));
 $("aiCloseBtn").addEventListener("click", closeAiPanel);
 $("aiReadBtn").addEventListener("click", () => {
-  if (!window.speechSynthesis){
+  const nativeTts = capTTS();
+  if (!nativeTts && !window.speechSynthesis){
     setStatus("Text-to-speech isn't supported in this browser.", true);
     return;
   }
@@ -2767,7 +2784,12 @@ $("aiReadBtn").addEventListener("click", () => {
   aiSpeaking = true;
   $("aiReadBtn").textContent = "⏸ Stop";
   $("aiReadBtn").classList.add("on");
-  speakAiQueue();
+  if (nativeTts){
+    const run = ++aiNativeRun;
+    speakAiNativeQueue(run);
+  } else {
+    speakAiQueue();
+  }
 });
 $("modeBtn").addEventListener("click", () => {
   metarMode = metarMode === "raw" ? "plain" : "raw";
