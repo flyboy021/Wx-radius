@@ -299,6 +299,7 @@
   body.basemap-voyager .stn .pin{border-color:var(--col)}
   body.basemap-voyager .stn .pin-shape svg polygon{stroke:var(--col)}
   .stn .lbl{font-size:12px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 1px 2px #000}
+  body.basemap-voyager .stn .lbl{color:#33383d;text-shadow:0 0 3px #fff,0 1px 2px #fff}
   .you{width:16px;height:16px;border-radius:50%;background:#ffffff;border:3px solid #0d1117;
     box-shadow:0 0 0 2px #ffffff99, 0 0 12px #ffffffcc}
   .you::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:16px;
@@ -2538,7 +2539,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "140";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "141";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
