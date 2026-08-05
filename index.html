@@ -1290,6 +1290,11 @@ function updateSpeakBtn(on){ const b = $("speakBtn"); if (b) b.classList.toggle(
 // Native Capacitor TTS when available (Android/iOS webview has no Web Speech API), else browser speech.
 const capTTS = () => (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TextToSpeech) || null;
 let speaking = false, lastReadKey = null, lastHoverIcao = null;
+// Bumped every time a new read is (re)started. A stopped/superseded speakSegments() loop
+// checks its own captured generation against this before continuing, so a fast station
+// switch can't have two loops both feeding the speech engine at once (that caused the
+// "repeats itself" bug — the shared `speaking` flag alone wasn't enough to detect that).
+let speechGen = 0;
 // Browsers block speechSynthesis until the user interacts once. Unlock it on the
 // first touch/tap/key so auto-read works for the rest of the session.
 let speechPrimed = false;
@@ -1301,6 +1306,7 @@ function primeSpeech(){
 ["pointerdown","touchend","keydown"].forEach(ev => window.addEventListener(ev, primeSpeech, {passive:true}));
 function stopSpeak(){
   speaking = false;
+  speechGen++;
   const t = capTTS(); if (t) t.stop().catch(() => {});
   if (window.speechSynthesis) speechSynthesis.cancel();
   updateSpeakBtn(false);
@@ -1319,14 +1325,16 @@ function speakOne(text){
   });
 }
 async function speakSegments(segs){
-  stopSpeak(); speaking = true; updateSpeakBtn(true);
+  stopSpeak();
+  const gen = speechGen;   // this call's identity; a newer call bumps speechGen past it
+  speaking = true; updateSpeakBtn(true);
   for (let i = 0; i < segs.length; i++){
-    if (!speaking) break;
+    if (gen !== speechGen) return;   // superseded by a newer read — stop, don't touch shared state
     await speakOne(segs[i]);
-    if (!speaking) break;
+    if (gen !== speechGen) return;
     if (i < segs.length - 1) await sleep(700);   // ~0.7s pause between brief, METAR and TAF
   }
-  speaking = false; updateSpeakBtn(false);
+  if (gen === speechGen){ speaking = false; updateSpeakBtn(false); }
 }
 // Read just one station's METAR/TAF (no area brief) — used when hovering a marker
 // so you can skim from station to station without waiting for the intro line each time.
@@ -2558,7 +2566,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "143";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "144";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
