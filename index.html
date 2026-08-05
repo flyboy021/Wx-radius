@@ -327,7 +327,7 @@
           </div>
           <div class="set-row">
             <span class="set-label">Map style</span>
-            <button id="basemapPref" class="toggle" title="Switch the map background between grey (Voyager) and dark">Voyager</button>
+            <button id="basemapPref" class="toggle" title="Switch the map background between grey (Voyager) and dark">Dark</button>
           </div>
           <div class="set-row">
             <span class="set-label">Location access<br><span id="gpsPrefStatus" class="set-sub"></span></span>
@@ -960,7 +960,7 @@ const BASEMAP_STYLES = {
   voyager: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
 };
 const BASEMAP_KEY = "wxradius.basemap";
-function getBasemapPref(){ return localStorage.getItem(BASEMAP_KEY) === "dark" ? "dark" : "voyager"; }
+function getBasemapPref(){ return localStorage.getItem(BASEMAP_KEY) === "voyager" ? "voyager" : "dark"; }
 let basemapLayer = L.tileLayer(BASEMAP_STYLES[getBasemapPref()], {maxZoom:18}).addTo(map);
 // Country + US state borders overlay (thin lines, non-interactive, below markers)
 fetch("https://cdn.jsdelivr.net/gh/johan/world.geo.json/countries.geo.json")
@@ -2534,7 +2534,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "138";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "139";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
