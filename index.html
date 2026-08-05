@@ -295,6 +295,9 @@
   .stn{display:flex;align-items:center;gap:3px;white-space:nowrap}
   .stn .pin{width:16px;height:16px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #0006;flex:none}
   .stn .pin-shape{flex:none;line-height:0;display:inline-flex;filter:drop-shadow(0 0 1px #0009)}
+  .stn .pin-shape svg polygon{stroke:#fff}
+  body.basemap-voyager .stn .pin{border-color:var(--col)}
+  body.basemap-voyager .stn .pin-shape svg polygon{stroke:var(--col)}
   .stn .lbl{font-size:12px;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 1px 2px #000}
   .you{width:16px;height:16px;border-radius:50%;background:#ffffff;border:3px solid #0d1117;
     box-shadow:0 0 0 2px #ffffff99, 0 0 12px #ffffffcc}
@@ -1026,9 +1029,9 @@ function stationIcon(s){
 function stnPin(s){
   const col = stnColor(s);
   if (s.taf)
-    return `<span class="pin-shape"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">`
-      + `<polygon points="12,4 21,20 3,20" fill="${col}" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/></svg></span>`;
-  return `<span class="pin" style="background:${col}"></span>`;
+    return `<span class="pin-shape" style="--col:${col}"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">`
+      + `<polygon points="12,4 21,20 3,20" fill="${col}" stroke-width="2.5" stroke-linejoin="round"/></svg></span>`;
+  return `<span class="pin" style="--col:${col};background:${col}"></span>`;
 }
 function bearingDeg(lat1, lon1, lat2, lon2){
   const r = Math.PI / 180;
@@ -2520,6 +2523,7 @@ function setBasemapPref(style){
   localStorage.setItem(BASEMAP_KEY, style);
   map.removeLayer(basemapLayer);
   basemapLayer = L.tileLayer(BASEMAP_STYLES[style], {maxZoom:18}).addTo(map);
+  document.body.classList.toggle("basemap-voyager", style === "voyager");
   const b = $("basemapPref");
   b.textContent = style === "dark" ? "Dark" : "Voyager";
   b.classList.toggle("on", style === "dark");
@@ -2534,7 +2538,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "139";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "140";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
