@@ -326,6 +326,10 @@
             <button id="skipIntroPref" class="toggle" title="Skip the opening intro animation on startup">Off</button>
           </div>
           <div class="set-row">
+            <span class="set-label">Map style</span>
+            <button id="basemapPref" class="toggle" title="Switch the map background between grey (Voyager) and dark">Voyager</button>
+          </div>
+          <div class="set-row">
             <span class="set-label">Location access<br><span id="gpsPrefStatus" class="set-sub"></span></span>
             <button id="gpsPrefReset" class="toggle" title="Forget the saved choice and ask again next time">Reset</button>
           </div>
@@ -951,7 +955,13 @@ async function geocode(idRaw){
 
 // ---- map ----------------------------------------------------------------
 const map = L.map("map", {zoomControl:false, attributionControl:false}).setView([39.5,-98.35], 4);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {maxZoom:18}).addTo(map);
+const BASEMAP_STYLES = {
+  dark:    "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  voyager: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+};
+const BASEMAP_KEY = "wxradius.basemap";
+function getBasemapPref(){ return localStorage.getItem(BASEMAP_KEY) === "dark" ? "dark" : "voyager"; }
+let basemapLayer = L.tileLayer(BASEMAP_STYLES[getBasemapPref()], {maxZoom:18}).addTo(map);
 // Country + US state borders overlay (thin lines, non-interactive, below markers)
 fetch("https://cdn.jsdelivr.net/gh/johan/world.geo.json/countries.geo.json")
   .then(r => r.ok ? r.json() : null)
@@ -2506,6 +2516,16 @@ function setSkipIntroPref(on){
 }
 setSkipIntroPref(getSkipIntroPref());
 $("skipIntroPref").addEventListener("click", () => setSkipIntroPref(!getSkipIntroPref()));
+function setBasemapPref(style){
+  localStorage.setItem(BASEMAP_KEY, style);
+  map.removeLayer(basemapLayer);
+  basemapLayer = L.tileLayer(BASEMAP_STYLES[style], {maxZoom:18}).addTo(map);
+  const b = $("basemapPref");
+  b.textContent = style === "dark" ? "Dark" : "Voyager";
+  b.classList.toggle("on", style === "dark");
+}
+setBasemapPref(getBasemapPref());
+$("basemapPref").addEventListener("click", () => setBasemapPref(getBasemapPref() === "dark" ? "voyager" : "dark"));
 const AUTO_READ_KEY = "wxradius.autoRead";
 function getAutoRead(){ return localStorage.getItem(AUTO_READ_KEY) === "1"; }
 function setAutoRead(on){
@@ -2514,7 +2534,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "137";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "138";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
