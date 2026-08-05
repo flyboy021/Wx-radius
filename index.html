@@ -1599,7 +1599,11 @@ function drawRoute(){
     // don't need a second overlapping marker on the map just to show their METAR.
     if (st) m.bindPopup(popupEl(st), {maxWidth:330, minWidth:250, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
     else m.bindPopup(`${p.id}${p.name?" · "+p.name:""}`);
-    if (st){ m._icao = st.icaoId; markersByIcao[st.icaoId] = m; if (canHover) m.on("mouseover", () => { m.openPopup(); onStationHover(st); }); }
+    if (st){
+      m._icao = st.icaoId; markersByIcao[st.icaoId] = m;
+      if (canHover) m.on("mouseover", () => { m.openPopup(); onStationHover(st); });
+      else m.on("click", () => onStationHover(st));   // touch: tap already opens the popup, this adds the read-aloud
+    }
   });
 }
 function routeBoundsLL(){ return route.map(p=>[p.lat,p.lon]); }
@@ -1751,6 +1755,7 @@ function drawBase(){
     youMarker.bindPopup(center.name === "My location" ? "You are here" : center.name);
   }
   if (canHover) youMarker.on("mouseover", () => { youMarker.openPopup(); onStationHover(near); });
+  else youMarker.on("click", () => onStationHover(near));
 }
 
 // Raw or decoded METAR box, controlled globally by metarMode.
@@ -2005,6 +2010,7 @@ function renderStations(){
     m._icao = s.icaoId; markersByIcao[s.icaoId] = m;
     m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
     if (canHover) m.on("mouseover", () => { m.openPopup(); onStationHover(s); });   // hover on desktop; single tap on touch
+    else m.on("click", () => onStationHover(s));
   }
 }
 
@@ -2552,7 +2558,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "142";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "143";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
