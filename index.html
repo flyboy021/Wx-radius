@@ -1289,7 +1289,7 @@ function closestStation(){
 function updateSpeakBtn(on){ const b = $("speakBtn"); if (b) b.classList.toggle("on", on); }
 // Native Capacitor TTS when available (Android/iOS webview has no Web Speech API), else browser speech.
 const capTTS = () => (window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.TextToSpeech) || null;
-let speaking = false, lastReadKey = null;
+let speaking = false, lastReadKey = null, lastHoverIcao = null;
 // Browsers block speechSynthesis until the user interacts once. Unlock it on the
 // first touch/tap/key so auto-read works for the rest of the session.
 let speechPrimed = false;
@@ -1327,6 +1327,19 @@ async function speakSegments(segs){
     if (i < segs.length - 1) await sleep(700);   // ~0.7s pause between brief, METAR and TAF
   }
   speaking = false; updateSpeakBtn(false);
+}
+// Read just one station's METAR/TAF (no area brief) — used when hovering a marker
+// so you can skim from station to station without waiting for the intro line each time.
+function speakStationWx(s){
+  if (!s || (!capTTS() && !window.speechSynthesis)) return;
+  const segs = spokenMetarSegments(s);
+  if (s.taf) segs.push(spokenTaf(s.taf));
+  if (segs.length) speakSegments(segs);
+}
+function onStationHover(s){
+  if (!s || !getAutoRead() || s.icaoId === lastHoverIcao) return;
+  lastHoverIcao = s.icaoId;
+  speakStationWx(s);
 }
 function speakAloud(){
   if (speaking){ stopSpeak(); return; }
@@ -1586,7 +1599,7 @@ function drawRoute(){
     // don't need a second overlapping marker on the map just to show their METAR.
     if (st) m.bindPopup(popupEl(st), {maxWidth:330, minWidth:250, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
     else m.bindPopup(`${p.id}${p.name?" · "+p.name:""}`);
-    if (st){ m._icao = st.icaoId; markersByIcao[st.icaoId] = m; if (canHover) m.on("mouseover", () => m.openPopup()); }
+    if (st){ m._icao = st.icaoId; markersByIcao[st.icaoId] = m; if (canHover) m.on("mouseover", () => { m.openPopup(); onStationHover(st); }); }
   });
 }
 function routeBoundsLL(){ return route.map(p=>[p.lat,p.lon]); }
@@ -1737,7 +1750,7 @@ function drawBase(){
   } else {
     youMarker.bindPopup(center.name === "My location" ? "You are here" : center.name);
   }
-  if (canHover) youMarker.on("mouseover", () => youMarker.openPopup());
+  if (canHover) youMarker.on("mouseover", () => { youMarker.openPopup(); onStationHover(near); });
 }
 
 // Raw or decoded METAR box, controlled globally by metarMode.
@@ -1991,7 +2004,7 @@ function renderStations(){
     const m = L.marker([s.lat, s.lon], {icon: stationIcon(s)}).addTo(layer);
     m._icao = s.icaoId; markersByIcao[s.icaoId] = m;
     m.bindPopup(popupEl(s), {maxWidth:330, minWidth:250, maxHeight:maxH, autoPan:true, keepInView:true, closeOnClick:true, autoClose:true});
-    if (canHover) m.on("mouseover", () => m.openPopup());   // hover on desktop; single tap on touch
+    if (canHover) m.on("mouseover", () => { m.openPopup(); onStationHover(s); });   // hover on desktop; single tap on touch
   }
 }
 
@@ -2539,7 +2552,7 @@ function setAutoRead(on){
 }
 setAutoRead(getAutoRead());
 $("autoReadPref").addEventListener("click", () => setAutoRead(!getAutoRead()));
-const APP_BUILD = "141";   // bump alongside sw.js CACHE so Settings shows the live version
+const APP_BUILD = "142";   // bump alongside sw.js CACHE so Settings shows the live version
 { const v = $("setVer"); if (v) v.textContent = `Vicinity · build ${APP_BUILD}`; }
 // One-time "new feature" callout pointing at Settings — shows once, then never again.
 const TIP_AUTOSPEAK_KEY = "wxradius.tipAutospeak";
